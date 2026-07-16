@@ -1,9 +1,13 @@
+// ======================================================================================
+// Core renderer for the application. All WGPU rendering is done here.
+// ======================================================================================
+
 use std::sync::Arc;
 
 use crate::camera;
 use crate::models;
+use crate::platform::Instant;
 use crate::wgpu_helper;
-use wgpu;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
@@ -23,50 +27,58 @@ pub struct Renderer {
   // Add a camera for the scene
   camera: camera::Camera,
 
+  // Depth buffer for 3D rendering
+  depth_texture_view: wgpu::TextureView,
+
   // When rendering started, used to drive time-based animation.
-  start_time: std::time::Instant,
+  start_time: Instant,
   is_surface_configured: bool,
 }
 
 impl Renderer {
-  pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
-    let size = window.inner_size();
-
+  pub async fn new(window: Arc<Window>, size: winit::dpi::PhysicalSize<u32>) -> anyhow::Result<Self> {
     // Step 1 - Core instance, surface, device & queue creation
     let (surface, device, queue, surf_config) = wgpu_helper::init(size, window).await?;
 
-    let (object_verts, object_indices) = models::example_quad();
+    // Load object data
+    let (object_verts, object_indices) = models::primitive_cube();
+
     // Step 2 - Create the vertex buffer
     let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
       label: Some("Vertex Buffer"),
-      contents: bytemuck::cast_slice(&object_verts),
+      contents: bytemuck::cast_slice(object_verts),
       usage: wgpu::BufferUsages::VERTEX,
     });
 
     let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
       label: Some("Index Buffer"),
-      contents: bytemuck::cast_slice(&object_indices),
+      contents: bytemuck::cast_slice(object_indices),
       usage: wgpu::BufferUsages::INDEX,
     });
 
     // Step 3 - Load the texture image and create a texture object
-    let (texture_view, sampler) = wgpu_helper::create_texture_from_bytes(&device, &queue, include_bytes!("assets/texture.jpg"))?;
+    let (texture_view, sampler) = wgpu_helper::create_texture_from_bytes(&device, &queue, include_bytes!("../assets/crate_wood.jpg"))?;
     // Create the bind group for the texture
     let (tex_bind_group, tex_bind_group_layout) = wgpu_helper::create_texture_bindgroup(&device, &texture_view, &sampler);
 
-    // Add a camera for the scene; it owns its own uniform buffer and bind group.
-    let camera = camera::Camera::new_default(&device, surf_config.width as f32 / surf_config.height as f32);
+    // Step 4 - Add a camera for the scene; it owns its own uniform buffer and bind group.
+    let aspect = surf_config.width as f32 / surf_config.height as f32;
+    let camera = camera::Camera::new(&device, glam::vec3(0.0, 1.5, 2.5), glam::vec3(0.0, 0.0, 0.0), aspect);
 
-    // Step 4 - Create the shaders & render pipeline
+    // Step 5 - Create a depth texture for 3D rendering
+    let (_depth_texture, depth_texture_view) = wgpu_helper::create_depth_texture(&device, &surf_config);
+
+    // Step 6 - Create the shaders & render pipeline
     let render_pipe = wgpu_helper::create_pipeline(
       &device,
-      &surf_config,
-      include_str!("shaders/shader.wgsl"),
+      surf_config.format.add_srgb_suffix(),
+      include_str!("../shaders/shader.wgsl"),
       &[crate::models::Vertex::desc()],
       &[Some(&tex_bind_group_layout), Some(camera.bind_group_layout())],
+      true,
     );
 
-    println!("Render pipeline created");
+    log::info!("Render pipeline created");
 
     Ok(Self {
       surface,
@@ -80,9 +92,10 @@ impl Renderer {
       num_indices: object_indices.len() as u32,
       tex_bind_group,
       camera,
+      depth_texture_view,
 
-      start_time: std::time::Instant::now(),
-      is_surface_configured: false,
+      start_time: Instant::now(),
+      is_surface_configured: true,
     })
   }
 
@@ -91,13 +104,22 @@ impl Renderer {
       self.surf_config.width = new_size.width;
       self.surf_config.height = new_size.height;
       self.surface.configure(&self.device, &self.surf_config);
+      let (_depth_texture, depth_texture_view) = wgpu_helper::create_depth_texture(&self.device, &self.surf_config);
+      self.depth_texture_view = depth_texture_view;
+      self.camera.set_aspect(new_size.width as f32 / new_size.height as f32);
       self.is_surface_configured = true;
     }
   }
 
   pub fn update(&mut self) {
     let t = self.start_time.elapsed().as_secs_f32();
-    self.camera.eye.y = 1.0 + (t * 0.5).sin();
+
+    // rotate the camera around the origin in a circle
+    let radius = 2.5;
+    let cam_x = radius * t.cos();
+    let cam_z = radius * t.sin();
+    self.camera.set_position([cam_x, 1.5, cam_z]);
+
     self.camera.update(&self.queue);
   }
 
@@ -126,22 +148,26 @@ impl Renderer {
       }
     };
 
-    let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
+      format: Some(self.surf_config.format.add_srgb_suffix()),
+      ..Default::default()
+    });
 
     // Begin rendering commands
     let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
 
     {
-      let mut render_pass = wgpu_helper::create_render_pass(&mut encoder, &view);
+      // Whole render pass is contained in this block
+      let mut render_pass = wgpu_helper::create_render_pass(&mut encoder, &view, Some(&self.depth_texture_view));
       render_pass.set_pipeline(&self.render_pipe);
       render_pass.set_bind_group(0, &self.tex_bind_group, &[]);
       render_pass.set_bind_group(1, self.camera.bind_group(), &[]);
       render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
       render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-      render_pass.draw_indexed(0..self.num_indices, 0, 0..1); // Draw with the number of indices and 1 instance
+      render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
     };
 
-    // Submit the encoded commands on the queue
+    // Submit the encoded commands on the queue & present the output texture to the surface
     self.queue.submit([encoder.finish()]);
     output.present();
 

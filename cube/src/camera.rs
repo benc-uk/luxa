@@ -1,4 +1,8 @@
-use glam;
+// ======================================================================================
+// WGPU & GLAM based camera implementation. This is very basic
+// ======================================================================================
+
+use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -10,15 +14,15 @@ struct CameraUniform {
 impl CameraUniform {
   fn new() -> Self {
     Self {
-      view_proj: glam::Mat4::IDENTITY.to_cols_array(),
+      view_proj: Mat4::IDENTITY.to_cols_array(),
     }
   }
 }
 
 pub struct Camera {
-  pub eye: glam::Vec3,
-  pub target: glam::Vec3,
-  up: glam::Vec3,
+  pub position: Vec3,
+  pub target: Vec3,
+  up: Vec3,
   aspect: f32,
   fovy: f32,
   znear: f32,
@@ -32,7 +36,7 @@ pub struct Camera {
 }
 
 impl Camera {
-  pub fn new(device: &wgpu::Device, eye: glam::Vec3, target: glam::Vec3, up: glam::Vec3, aspect: f32, fovy: f32, znear: f32, zfar: f32) -> Self {
+  pub fn new(device: &wgpu::Device, position: Vec3, target: Vec3, aspect: f32) -> Self {
     let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
       label: Some("Camera Buffer"),
       contents: bytemuck::cast_slice(&[CameraUniform::new()]),
@@ -42,13 +46,13 @@ impl Camera {
     let (bind_group, bind_group_layout) = crate::wgpu_helper::create_uniform_bindgroup(device, &buffer);
 
     let mut camera = Self {
-      eye,
+      position,
       target,
-      up,
+      up: Vec3::Y,
       aspect,
-      fovy,
-      znear,
-      zfar,
+      fovy: 45.0,
+      znear: 0.1,
+      zfar: 100.0,
       uniform: CameraUniform::new(),
       buffer,
       bind_group,
@@ -56,11 +60,8 @@ impl Camera {
     };
     // Prime the uniform with the initial matrix. The GPU buffer is uploaded every frame by `update`.
     camera.uniform.view_proj = camera.build_view_projection_matrix().to_cols_array();
-    camera
-  }
 
-  pub fn new_default(device: &wgpu::Device, aspect: f32) -> Self {
-    Self::new(device, glam::vec3(0.0, 1.0, 2.0), glam::vec3(0.0, 0.0, 0.0), glam::Vec3::Y, aspect, 45.0, 0.1, 100.0)
+    camera
   }
 
   /// The bind group layout, needed when building the render pipeline.
@@ -79,10 +80,18 @@ impl Camera {
     queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&[self.uniform]));
   }
 
-  fn build_view_projection_matrix(&self) -> glam::Mat4 {
-    let view = glam::camera::rh::view::look_at_mat4(self.eye, self.target, self.up);
+  fn build_view_projection_matrix(&self) -> Mat4 {
+    let view = glam::camera::rh::view::look_at_mat4(self.position, self.target, self.up);
     // wgpu uses the WebGPU NDC convention (Z in [0, 1], Y-up), which glam exposes as `directx`
     let proj = glam::camera::rh::proj::directx::perspective(self.fovy.to_radians(), self.aspect, self.znear, self.zfar);
     proj * view
+  }
+
+  pub fn set_position(&mut self, position: [f32; 3]) {
+    self.position = Vec3::from(position);
+  }
+
+  pub fn set_aspect(&mut self, aspect: f32) {
+    self.aspect = aspect;
   }
 }

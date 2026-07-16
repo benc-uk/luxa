@@ -10,10 +10,13 @@ pub async fn init(
   size: winit::dpi::PhysicalSize<u32>,
   window: Arc<winit::window::Window>,
 ) -> anyhow::Result<(wgpu::Surface<'static>, wgpu::Device, wgpu::Queue, wgpu::SurfaceConfiguration)> {
+  // Web canvases can report zero while layout settles, but GPU textures cannot be empty.
+  let size = winit::dpi::PhysicalSize::new(size.width.max(1), size.height.max(1));
+
   // The instance helps us access the graphics card and create surfaces for rendering
   let instance = wgpu::Instance::default();
-  let surface = instance.create_surface(window.clone()).unwrap();
-  println!("Surface created for window");
+  let surface = instance.create_surface(window).expect("surface creation failed");
+  log::debug!("Surface created for window");
 
   // Create the adapter which is kinda like a handle to the actual graphics card
   let adapter = instance
@@ -24,15 +27,21 @@ pub async fn init(
     .await?;
 
   let info = adapter.get_info();
-  println!("Using adapter: {} ({:?})", info.name, info.backend);
+  log::info!("Using adapter: {} ({:?})", info.name, info.backend);
 
   let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor::default()).await?;
 
   let surface_caps = surface.get_capabilities(&adapter);
-  println!("Surface capabilities: {:?}", surface_caps);
+  log::info!("Surface capabilities: {:?}", surface_caps);
 
   // Use get_default_config to make life easier
-  let surf_config = surface.get_default_config(&adapter, size.width, size.height).unwrap();
+  let mut surf_config = surface.get_default_config(&adapter, size.width, size.height).expect("surface config failed");
+  // Add the sRGB format to the list of view formats if it's not already there, so we can use it for rendering
+  let render_format = surf_config.format.add_srgb_suffix();
+  if render_format != surf_config.format {
+    surf_config.view_formats.push(render_format);
+  }
+
   surface.configure(&device, &surf_config);
 
   Ok((surface, device, queue, surf_config))
@@ -42,10 +51,11 @@ pub async fn init(
 // Lots of defaults are used here, we could provide more options in the future if needed
 pub fn create_pipeline(
   device: &wgpu::Device,
-  surf_config: &wgpu::SurfaceConfiguration,
+  target_format: wgpu::TextureFormat,
   shader_str: &str,
   vertex_layouts: &[wgpu::VertexBufferLayout<'static>],
   bind_groups: &[Option<&wgpu::BindGroupLayout>],
+  enable_depth: bool,
 ) -> wgpu::RenderPipeline {
   let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
     label: Some("Shader"),
@@ -71,7 +81,7 @@ pub fn create_pipeline(
       module: &shader,
       entry_point: Some("frag_main"), // Hard coded for now
       targets: &[Some(wgpu::ColorTargetState {
-        format: surf_config.format,
+        format: target_format,
         blend: Some(wgpu::BlendState::REPLACE),
         write_mask: wgpu::ColorWrites::ALL,
       })],
@@ -86,7 +96,17 @@ pub fn create_pipeline(
       unclipped_depth: false,
       conservative: false,
     },
-    depth_stencil: None,
+    depth_stencil: if enable_depth {
+      Some(wgpu::DepthStencilState {
+        format: wgpu::TextureFormat::Depth32Float,
+        depth_write_enabled: Some(true),
+        depth_compare: Some(wgpu::CompareFunction::Less),
+        stencil: wgpu::StencilState::default(),
+        bias: wgpu::DepthBiasState::default(),
+      })
+    } else {
+      None
+    },
     multisample: wgpu::MultisampleState {
       count: 1,
       mask: !0,
@@ -100,7 +120,17 @@ pub fn create_pipeline(
 }
 
 // Create a render pass with the given encoder and texture view
-pub fn create_render_pass<'a>(encoder: &'a mut wgpu::CommandEncoder, view: &wgpu::TextureView) -> wgpu::RenderPass<'a> {
+pub fn create_render_pass<'a>(encoder: &'a mut wgpu::CommandEncoder, view: &wgpu::TextureView, depth_texture_view: Option<&wgpu::TextureView>) -> wgpu::RenderPass<'a> {
+  // Build the optional depth attachment up front so the descriptor below stays flat and readable.
+  let depth_stencil_attachment = depth_texture_view.map(|depth_view| wgpu::RenderPassDepthStencilAttachment {
+    view: depth_view,
+    depth_ops: Some(wgpu::Operations {
+      load: wgpu::LoadOp::Clear(1.0),
+      store: wgpu::StoreOp::Store,
+    }),
+    stencil_ops: None,
+  });
+
   encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
     label: Some("Render Pass"),
     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -112,7 +142,7 @@ pub fn create_render_pass<'a>(encoder: &'a mut wgpu::CommandEncoder, view: &wgpu
         store: wgpu::StoreOp::Store,
       },
     })],
-    depth_stencil_attachment: None,
+    depth_stencil_attachment,
     occlusion_query_set: None,
     timestamp_writes: None,
     multiview_mask: None,
@@ -149,7 +179,7 @@ pub fn create_texture_from_bytes(device: &wgpu::Device, queue: &wgpu::Queue, byt
       origin: wgpu::Origin3d::ZERO,
       aspect: wgpu::TextureAspect::All,
     },
-    &bytes_rgba,
+    bytes_rgba,
     wgpu::TexelCopyBufferLayout {
       offset: 0,
       bytes_per_row: Some(4 * dimensions.0),
@@ -201,11 +231,11 @@ pub fn create_texture_bindgroup(device: &wgpu::Device, texture_view: &wgpu::Text
     entries: &[
       wgpu::BindGroupEntry {
         binding: 0,
-        resource: wgpu::BindingResource::TextureView(&texture_view),
+        resource: wgpu::BindingResource::TextureView(texture_view),
       },
       wgpu::BindGroupEntry {
         binding: 1,
-        resource: wgpu::BindingResource::Sampler(&sampler),
+        resource: wgpu::BindingResource::Sampler(sampler),
       },
     ],
   });
@@ -238,4 +268,25 @@ pub fn create_uniform_bindgroup(device: &wgpu::Device, buffer: &wgpu::Buffer) ->
   });
 
   (bind_group, bind_group_layout)
+}
+
+pub fn create_depth_texture(device: &wgpu::Device, surf_config: &wgpu::SurfaceConfiguration) -> (wgpu::Texture, wgpu::TextureView) {
+  let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+    label: Some("Depth Texture"),
+    size: wgpu::Extent3d {
+      width: surf_config.width,
+      height: surf_config.height,
+      depth_or_array_layers: 1,
+    },
+    mip_level_count: 1,
+    sample_count: 1,
+    dimension: wgpu::TextureDimension::D2,
+    format: wgpu::TextureFormat::Depth32Float,
+    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+    view_formats: &[],
+  });
+
+  let depth_texture_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+  (depth_texture, depth_texture_view)
 }

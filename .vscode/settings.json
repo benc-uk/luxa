@@ -1,6 +1,14 @@
 {
+  // "rust-analyzer.cargo.target": "wasm32-unknown-unknown",
   "rust-analyzer.inlayHints.typeHints.enable": false,
   "rust-analyzer.inlayHints.parameterHints.enable": false,
   "rust-analyzer.inlayHints.chainingHints.enable": false,
-  "rust-analyzer.inlayHints.closingBraceHints.enable": false
+  "rust-analyzer.inlayHints.closingBraceHints.enable": false,
+  "rust-analyzer.lens.implementations.enable": false,
+  "chat.tools.terminal.autoApprove": {
+    "cargo check": true,
+    "cargo clippy": true,
+    "cargo clean": true,
+    "uniq": true
+  }
 }
