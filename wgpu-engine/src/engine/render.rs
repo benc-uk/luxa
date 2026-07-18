@@ -30,7 +30,7 @@ impl Engine {
     }
 
     for material in self.materials.values_mut() {
-      material.upload_gpu(&self.queue);
+      material.upload_gpu(&self.device, &self.queue, &self.textures, &self.material_fallbacks);
     }
 
     // Root node for rendering all nodes in this scene

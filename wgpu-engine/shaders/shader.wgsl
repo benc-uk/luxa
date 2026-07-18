@@ -27,9 +27,13 @@ struct FrameUniform {
 };
 
 struct Material {
-    base_color: vec4f,
-    specular_color: vec4f,
-    shininess: f32,
+    base_color_factor: vec4f,
+    emissive_factor: vec3f,
+    metallic_factor: f32,
+    roughness_factor: f32,
+    normal_scale: f32,
+    occlusion_strength: f32,
+    alpha_cutoff: f32,
 };
  
 struct Light {
@@ -53,12 +57,39 @@ var<uniform> camera: CameraUniform;
 var<uniform> time: f32;
 
 // Material group: material and texture bindings
+// Material values
 @group(1) @binding(0)
 var<uniform> material: Material;
+
+// Base colour, sRGB
 @group(1) @binding(1)
-var t_diffuse: texture_2d<f32>;
+var t_base_color: texture_2d<f32>;
 @group(1) @binding(2)
-var s_diffuse: sampler;
+var s_base_color: sampler;
+
+// Metallic-roughness, linear
+@group(1) @binding(3)
+var t_metallic_roughness: texture_2d<f32>;
+@group(1) @binding(4)
+var s_metallic_roughness: sampler;
+
+// Normal, linear
+@group(1) @binding(5)
+var t_normal: texture_2d<f32>;
+@group(1) @binding(6)
+var s_normal: sampler;
+
+// Occlusion, linear
+@group(1) @binding(7)
+var t_occlusion: texture_2d<f32>;
+@group(1) @binding(8)
+var s_occlusion: sampler;
+
+// Emissive, sRGB
+@group(1) @binding(9)
+var t_emissive: texture_2d<f32>;
+@group(1) @binding(10)
+var s_emissive: sampler;
 
 // Model group: model uniform
 @group(2) @binding(0)
@@ -96,7 +127,7 @@ fn frag_main(in: VertexOutput) -> @location(0) vec4f {
         light_accum = light_accum + diffuse * light.color * light.intensity;
     }
 
-    let tex_color = textureSample(t_diffuse, s_diffuse, in.tex_coord);
-    let color = material.base_color * tex_color * vec4f(light_accum, 1.0);
+    let tex_color = textureSample(t_base_color, s_base_color, in.tex_coord);
+    let color = material.base_color_factor * tex_color * vec4f(light_accum, 1.0);
     return color;
 }

@@ -8,6 +8,24 @@ new_key_type! {
   pub struct SceneHandle;
 }
 
+// impl Node3DHandle {
+//   pub fn set_position(&self, engine: &mut Engine, position: Vec3) {
+//     let node = engine.node_mut(*self);
+//     node.set_position(position);
+//   }
+
+//   pub fn set_rotation(&self, engine: &mut Engine, rotation: Quat) {
+//     let node = engine.node_mut(*self);
+//     node.set_rotation(rotation);
+//   }
+
+//   pub fn set_scale(&self, engine: &mut Engine, scale: Vec3) -> Self {
+//     let node = engine.node_mut(*self);
+//     node.set_scale(scale);
+//     *self
+//   }
+// }
+
 impl Engine {
   pub fn create_scene(&mut self) -> (SceneHandle, Node3DHandle) {
     let root_node = Node3D::new(&self.device, glam::Vec3::ZERO, glam::Quat::IDENTITY, glam::Vec3::new(1.0, 1.0, 1.0));
@@ -25,19 +43,23 @@ impl Engine {
     Ok(handle)
   }
 
+  pub(crate) fn create_texture_from_image(&mut self, image: &image::DynamicImage, format: wgpu::TextureFormat, label: &str) -> anyhow::Result<TextureHandle> {
+    let texture = Texture::from_image(&self.device, &self.queue, image, format, Some(label))?;
+    let handle = self.textures.insert(texture);
+    log::info!("Created texture {} with handle {:?}", label, handle);
+    Ok(handle)
+  }
+
   pub fn create_material(&mut self, texture: Option<TextureHandle>) -> MaterialHandle {
     if let Some(texture_handle) = texture {
-      let texture = self.textures.get(texture_handle).expect("Invalid texture handle");
-      let material = Material::new(&self.device, texture);
-      let handle = self.materials.insert(material);
-      log::info!("Created material with handle {:?}", handle);
-      handle
-    } else {
-      let material = Material::new(&self.device, &self.default_texture);
-      let handle = self.materials.insert(material);
-      log::info!("Created default material with handle {:?}", handle);
-      handle
+      self.textures.get(texture_handle).expect("Invalid texture handle");
     }
+
+    let mut material = Material::new(&self.device, &self.material_fallbacks);
+    material.set_base_color_texture(texture);
+    let handle = self.materials.insert(material);
+    log::info!("Created material with handle {:?}", handle);
+    handle
   }
 
   pub(crate) fn add_mesh(&mut self, mesh: Mesh) -> MeshHandle {

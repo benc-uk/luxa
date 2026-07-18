@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use glam::{Quat, Vec3, vec3};
-use wgpu_engine::{Engine, MeshBuilder, Size};
+use wgpu_engine::{Engine, Size};
 use winit::dpi::LogicalSize;
 use winit::{
   application::ApplicationHandler,
@@ -16,8 +16,7 @@ struct App {
   window: Option<Arc<Window>>,
   scene: Option<wgpu_engine::SceneHandle>,
   camera: Option<wgpu_engine::Node3DHandle>,
-  c1: Option<wgpu_engine::Node3DHandle>,
-  c2: Option<wgpu_engine::Node3DHandle>,
+  thing: Option<wgpu_engine::Node3DHandle>,
 }
 
 impl ApplicationHandler for App {
@@ -43,30 +42,18 @@ impl ApplicationHandler for App {
     ))
     .expect("failed to create engine");
 
-    let crate_tex = engine.create_texture("assets/crate_wood.jpg").expect("failed to load texture");
-    let ball_tex = engine.create_texture("assets/ball.jpg").expect("failed to load texture");
-    let crate_mat1 = engine.create_material(Some(crate_tex));
-    let ball_mat = engine.create_material(Some(ball_tex));
-    // engine.material_mut(ball_mat).set_base_color([0.1, 0.5, 1.0, 1.0]);
-
-    let meshbox = MeshBuilder::new(&engine).add_primitive_cube().set_material(crate_mat1).build(&mut engine);
-    let meshball = MeshBuilder::new(&engine).add_primitive_sphere(24, 24).set_material(ball_mat).build(&mut engine);
-
     let (scene, root) = engine.create_scene();
-    let n1 = engine.create_node(root, vec3(0.8, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE); // blue
-    let n2 = engine.create_node(root, vec3(-0.8, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE); // not blue
-    let camera = engine.create_camera_node(root, vec3(0.0, 0.0, 2.0), vec3(0.0, 0.0, 0.0), Vec3::ONE, 45.0, 0.1, 100.0);
-    self.c1 = Some(engine.create_mesh_node(n1, vec![meshball], vec3(0.0, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE));
-    self.c2 = Some(engine.create_mesh_node(n2, vec![meshbox], vec3(0.0, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE));
-
-    let light1 = engine.create_light_node(root, vec3(15.0, 2.0, 3.0), vec3(1.0, 1.0, 1.0), 0.7);
-    let light2 = engine.create_light_node(root, vec3(-5.0, 6.0, 7.0), vec3(1.0, 1.0, 0.0), 0.4);
+    engine.create_light_node(root, vec3(15.0, 2.0, 3.0), vec3(1.0, 1.0, 1.0), 0.7);
+    engine.create_light_node(root, vec3(-5.0, 6.0, 7.0), vec3(1.0, 0.3, 0.1), 0.4);
+    self.camera = Some(engine.create_camera_node(root, vec3(0.0, 0.0, 2.0), vec3(0.0, 0.0, 0.0), Vec3::ONE, 45.0, 0.1, 100.0));
+    let model_hdl = engine.load_gltf("./assets/water_bottle.glb", root).expect("failed to load gltf");
+    engine.node_mut(model_hdl).set_scale(vec3(0.5, 0.5, 0.5));
+    self.thing = Some(model_hdl);
 
     window.request_redraw();
     self.window = Some(window);
     self.engine = Some(engine);
     self.scene = Some(scene);
-    self.camera = Some(camera);
   }
 
   fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
@@ -91,17 +78,12 @@ impl ApplicationHandler for App {
           // Update the engine by one frame
           engine.update();
 
-          let h = (engine.t() * 2.5).sin() * 0.3;
-
-          // Loan for c1: opens and closes on this one line.
-          engine.node_mut(self.c1.unwrap()).set_position(vec3(-h, 0.0, 0.0));
           let rotation = Quat::from_rotation_y(engine.t());
-          engine.node_mut(self.c2.unwrap()).set_rotation(rotation);
-          engine.node_mut(self.c1.unwrap()).set_rotation(-rotation);
+          engine.node_mut(self.thing.unwrap()).set_rotation(rotation);
 
           // Loan for the camera: nothing else touches `engine` while it's alive, so it's fine.
           let camera = engine.node_mut(self.camera.unwrap());
-          camera.set_position(vec3(0.0, 1.5, 2.8));
+          camera.set_position(vec3(0.0, 0.0, 0.2));
           camera.look_at(vec3(0.0, 0.0, 0.0));
 
           // Render happens here!

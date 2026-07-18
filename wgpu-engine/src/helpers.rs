@@ -36,3 +36,24 @@ pub fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     count: None,
   }
 }
+
+pub fn bind_buffer(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
+  wgpu::BindGroupEntry {
+    binding,
+    resource: buffer.as_entire_binding(),
+  }
+}
+
+pub fn bind_texture(binding: u32, texture: &crate::models::Texture) -> wgpu::BindGroupEntry<'_> {
+  wgpu::BindGroupEntry {
+    binding,
+    resource: wgpu::BindingResource::TextureView(&texture.view),
+  }
+}
+
+pub fn bind_sampler(binding: u32, texture: &crate::models::Texture) -> wgpu::BindGroupEntry<'_> {
+  wgpu::BindGroupEntry {
+    binding,
+    resource: wgpu::BindingResource::Sampler(&texture.sampler),
+  }
+}

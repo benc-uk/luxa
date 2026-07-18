@@ -185,8 +185,16 @@ impl Node3D {
   }
 
   pub fn look_at(&mut self, target: Vec3) {
-    let direction = (target - self.position).normalize();
-    self.rotation = Quat::from_rotation_arc(glam::vec3(0.0, 0.0, -1.0), direction);
+    if let NodeKind::Camera(camera) = &mut self.kind {
+      camera.target = target;
+    }
+
+    let direction = target - self.position;
+    if direction.length_squared() <= 1e-12 {
+      return;
+    }
+
+    self.rotation = Quat::from_rotation_arc(Vec3::NEG_Z, direction.normalize());
     self.update();
   }
 

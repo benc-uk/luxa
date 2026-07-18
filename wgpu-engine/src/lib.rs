@@ -4,6 +4,7 @@ mod engine;
 mod helpers;
 mod models;
 mod nodes;
+mod parser;
 
 pub use common::Size;
 pub use engine::{Engine, Node3DHandle, SceneHandle};

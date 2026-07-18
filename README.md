@@ -15,3 +15,9 @@ cross-platform startup.
 
 See the [cube README](cube/README.md) for the architecture, rendering lifecycle, project structure,
 and desktop and browser build instructions.
+
+### [Reusable 3D engine](wgpu-engine/)
+
+The reusable engine hides the raw `wgpu` resource graph behind engine-owned meshes, materials,
+textures, nodes and handles. See the [glTF parser guide](wgpu-engine/PARSER.md) for its asset-loading
+flow, terminology, supported features and current limitations.

@@ -9,7 +9,7 @@ use web_time::Instant;
 use crate::Node3D;
 use crate::common::Size;
 use crate::helpers;
-use crate::models::{Material, Mesh, Texture, Vertex};
+use crate::models::{Material, MaterialFallbacks, Mesh, Texture, Vertex};
 use gpu::{create_depth_texture, create_pipeline, init};
 
 use bytemuck::Zeroable;
@@ -97,7 +97,7 @@ pub struct Engine {
 
   // Depth buffer for 3D rendering
   depth_texture_view: wgpu::TextureView,
-  default_texture: Texture,
+  material_fallbacks: MaterialFallbacks,
   default_material: MaterialHandle,
 
   // When rendering started, used to drive time-based animation.
@@ -205,9 +205,10 @@ impl Engine {
     let (_depth_texture, depth_texture_view) = create_depth_texture(&device, &surf_config);
 
     // Step 7 - Create a default texture and material
-    let default_texture = Texture::new_flat_color(&device, &queue, [255, 255, 255, 255], "default_texture")?;
+    //let default_texture = Texture::new_flat_color(&device, &queue, [255, 255, 255, 255], "default_texture")?;
     let mut materials = SlotMap::with_key();
-    let default_material = materials.insert(Material::new(&device, &default_texture));
+    let material_fallbacks = MaterialFallbacks::new(&device, &queue)?;
+    let default_material = materials.insert(Material::new(&device, &material_fallbacks));
 
     log::info!("Render pipeline created");
 
@@ -221,7 +222,7 @@ impl Engine {
       render_pipe,
 
       depth_texture_view,
-      default_texture,
+      material_fallbacks,
       default_material,
 
       start_time: Instant::now(),
@@ -249,10 +250,6 @@ impl Engine {
 
   pub(crate) fn get_queue(&self) -> &wgpu::Queue {
     &self.queue
-  }
-
-  pub fn default_texture(&self) -> &Texture {
-    &self.default_texture
   }
 
   pub fn default_material(&self) -> MaterialHandle {
