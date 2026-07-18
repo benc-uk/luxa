@@ -10,6 +10,7 @@ struct VertexOutput {
     @builtin(position) clip_position: vec4f,
     @location(0) tex_coord: vec2f,
     @location(1) normal: vec3f,
+    @location(2) world_pos: vec3f,
 };
 
 struct ModelUniform {
@@ -30,10 +31,17 @@ struct Material {
     specular_color: vec4f,
     shininess: f32,
 };
-
+ 
 struct Light {
     position: vec3f,
+    intensity: f32,
     color: vec3f,
+    _pad: f32,
+};
+
+struct Lights {
+    count: u32,
+    lights: array<Light, 16>,
 };
 
 // ===== Uniform bindings ====================================
@@ -56,9 +64,8 @@ var s_diffuse: sampler;
 @group(2) @binding(0)
 var<uniform> model: ModelUniform;
 
-// Light group: light uniform
 @group(3) @binding(0)
-var<uniform> light: Light; 
+var<uniform> lights: Lights;
 
 // ===== Vertex shader ==========================================
 
@@ -69,6 +76,7 @@ fn vert_main(in: VertexInput) -> VertexOutput {
     out.clip_position = camera.view_proj * model.model * vec4(in.position, 1.0);
     out.tex_coord = in.tex_coord;
     out.normal = (model.normal_matrix * vec4(in.normal, 0.0)).xyz;
+    out.world_pos = (model.model * vec4(in.position, 1.0)).xyz;
 
     return out;
 }
@@ -77,12 +85,18 @@ fn vert_main(in: VertexInput) -> VertexOutput {
 
 @fragment
 fn frag_main(in: VertexOutput) -> @location(0) vec4f {
-    // Test hardcoded light
-    let light_dir = normalize(vec3f(-1.0, 12.5, 20.0));
-    let normal = normalize(in.normal);
-    let diffuse = max(dot(normal, light_dir), 0.0);
+
+    var light_accum: vec3f = vec3f(0.0, 0.0, 0.0);
+
+    for (var i = 0u; i < lights.count; i = i + 1u) {
+        let light = lights.lights[i];
+        let light_dir = normalize(light.position - in.world_pos);
+        let normal = normalize(in.normal);
+        let diffuse = max(dot(normal, light_dir), 0.0);
+        light_accum = light_accum + diffuse * light.color * light.intensity;
+    }
 
     let tex_color = textureSample(t_diffuse, s_diffuse, in.tex_coord);
-    let color = material.base_color * tex_color * diffuse;
+    let color = material.base_color * tex_color * vec4f(light_accum, 1.0);
     return color;
 }

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use glam::{Quat, Vec3, camera, vec3};
+use glam::{Quat, Vec3, vec3};
 use wgpu_engine::{Engine, MeshBuilder, Size};
+use winit::dpi::LogicalSize;
 use winit::{
   application::ApplicationHandler,
   event::WindowEvent,
@@ -27,7 +28,7 @@ impl ApplicationHandler for App {
 
     let window = Arc::new(
       event_loop
-        .create_window(Window::default_attributes().with_title("Winit Harness"))
+        .create_window(Window::default_attributes().with_title("WGPU-Engine Harness").with_inner_size(LogicalSize::new(1280, 720)))
         .expect("failed to create window"),
     );
 
@@ -43,19 +44,23 @@ impl ApplicationHandler for App {
     .expect("failed to create engine");
 
     let crate_tex = engine.create_texture("assets/crate_wood.jpg").expect("failed to load texture");
+    let ball_tex = engine.create_texture("assets/ball.jpg").expect("failed to load texture");
     let crate_mat1 = engine.create_material(Some(crate_tex));
-    let crate_mat_blue = engine.create_material(Some(crate_tex));
-    engine.material_mut(crate_mat_blue).set_base_color([0.1, 0.5, 1.0, 1.0]);
+    let ball_mat = engine.create_material(Some(ball_tex));
+    // engine.material_mut(ball_mat).set_base_color([0.1, 0.5, 1.0, 1.0]);
 
-    let mesh1 = MeshBuilder::new(&engine).add_primitive_cube().set_material(crate_mat1).build(&mut engine);
-    let meshblue = MeshBuilder::new(&engine).add_primitive_sphere(12, 12).set_material(crate_mat_blue).build(&mut engine);
+    let meshbox = MeshBuilder::new(&engine).add_primitive_cube().set_material(crate_mat1).build(&mut engine);
+    let meshball = MeshBuilder::new(&engine).add_primitive_sphere(24, 24).set_material(ball_mat).build(&mut engine);
 
     let (scene, root) = engine.create_scene();
     let n1 = engine.create_node(root, vec3(0.8, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE); // blue
     let n2 = engine.create_node(root, vec3(-0.8, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE); // not blue
     let camera = engine.create_camera_node(root, vec3(0.0, 0.0, 2.0), vec3(0.0, 0.0, 0.0), Vec3::ONE, 45.0, 0.1, 100.0);
-    self.c1 = Some(engine.create_mesh_node(n1, vec![meshblue], vec3(0.0, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE));
-    self.c2 = Some(engine.create_mesh_node(n2, vec![mesh1], vec3(0.0, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE));
+    self.c1 = Some(engine.create_mesh_node(n1, vec![meshball], vec3(0.0, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE));
+    self.c2 = Some(engine.create_mesh_node(n2, vec![meshbox], vec3(0.0, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE));
+
+    let light1 = engine.create_light_node(root, vec3(15.0, 2.0, 3.0), vec3(1.0, 1.0, 1.0), 0.7);
+    let light2 = engine.create_light_node(root, vec3(-5.0, 6.0, 7.0), vec3(1.0, 1.0, 0.0), 0.4);
 
     window.request_redraw();
     self.window = Some(window);
@@ -96,7 +101,7 @@ impl ApplicationHandler for App {
 
           // Loan for the camera: nothing else touches `engine` while it's alive, so it's fine.
           let camera = engine.node_mut(self.camera.unwrap());
-          camera.set_position(vec3(0.0, 0.5, 2.8));
+          camera.set_position(vec3(0.0, 1.5, 2.8));
           camera.look_at(vec3(0.0, 0.0, 0.0));
 
           // Render happens here!

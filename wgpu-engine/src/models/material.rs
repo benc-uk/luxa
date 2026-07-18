@@ -1,5 +1,5 @@
+use crate::helpers;
 use crate::models::Texture;
-use crate::wgpu_helper;
 use wgpu::util::DeviceExt;
 
 pub struct Material {
@@ -109,9 +109,9 @@ impl Material {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
       label: Some("Material Bind Group Layout"),
       entries: &[
-        wgpu_helper::uniform_entry(0, wgpu::ShaderStages::FRAGMENT),
-        wgpu_helper::texture_entry(1),
-        wgpu_helper::sampler_entry(2),
+        helpers::uniform_entry(0, wgpu::ShaderStages::FRAGMENT),
+        helpers::texture_entry(1),
+        helpers::sampler_entry(2),
       ],
     })
   }

@@ -1,11 +1,9 @@
 use crate::{
-  Mesh,
   engine::{MeshHandle, Node3DHandle},
+  helpers::uniform_entry,
 };
 use glam::{Mat4, Quat, Vec3};
 use wgpu::util::DeviceExt;
-
-use crate::wgpu_helper;
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -35,6 +33,7 @@ pub enum NodeKind {
   Empty,
   Mesh(MeshData),
   Camera(CameraData),
+  Light(LightData),
 }
 
 pub struct CameraData {
@@ -47,6 +46,11 @@ pub struct CameraData {
 
 pub struct MeshData {
   pub mesh_handles: Vec<MeshHandle>,
+}
+
+pub struct LightData {
+  pub color: Vec3,
+  pub intensity: f32,
 }
 
 impl CameraData {
@@ -122,6 +126,14 @@ impl Node3D {
       up: Vec3::Y,
     });
 
+    node
+  }
+
+  pub(crate) fn new_light(device: &wgpu::Device, position: Vec3, color: Vec3, intensity: f32) -> Self {
+    let rotation = Quat::IDENTITY;
+    let scale = Vec3::ONE;
+    let mut node = Self::new(device, position, rotation, scale);
+    node.kind = NodeKind::Light(LightData { color, intensity });
     node
   }
 
@@ -202,7 +214,7 @@ impl Node3D {
   pub(crate) fn get_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
       label: Some("Node Bind Group Layout"),
-      entries: &[wgpu_helper::uniform_entry(0, wgpu::ShaderStages::VERTEX)],
+      entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX)],
     })
   }
 
@@ -223,6 +235,17 @@ impl Node3D {
   pub(crate) fn view_proj(&self, aspect: f32) -> Option<Mat4> {
     match &self.kind {
       NodeKind::Camera(data) => Some(data.view_proj(self.world_position(), aspect)),
+      _ => None,
+    }
+  }
+
+  pub(crate) fn is_light(&self) -> bool {
+    matches!(self.kind, NodeKind::Light(_))
+  }
+
+  pub(crate) fn light_data(&self) -> Option<&LightData> {
+    match &self.kind {
+      NodeKind::Light(data) => Some(data),
       _ => None,
     }
   }
