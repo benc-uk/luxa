@@ -48,14 +48,10 @@ impl ApplicationHandler for App {
     engine.create_light_node(root, vec3(3.0, 5.0, 4.0), vec3(0.1, 0.8, 0.3), 16.4);
     self.camera = Some(engine.create_camera_node(root, vec3(0.0, 0.0, 2.0), vec3(0.0, 0.0, 0.0), Vec3::ONE, 45.0, 0.1, 100.0));
     let node = engine.create_node(root, vec3(0.0, 0.0, 0.0), Quat::IDENTITY, vec3(1.0, 1.0, 1.0));
-    let model_hdl = engine.load_gltf("./assets/PotOfCoals.glb", node).expect("failed to load gltf");
+    let model_hdl = engine.load_gltf("./assets/khronos/pot_of_coals.glb", node).expect("failed to load gltf");
     engine.node_mut(model_hdl).set_position(vec3(0.0, 1.0, 0.0));
     engine.node_mut(model_hdl).set_scale(vec3(18.0, 18.0, 18.0));
-
-    // let box_mat = engine.create_material(None);
-    // let boxmesh = MeshBuilder::new(&engine).add_primitive_cube().set_material(box_mat).build(&mut engine);
-    // engine.create_mesh_node(node, vec![boxmesh], vec3(0.0, 0.0, 0.0), Quat::IDENTITY, vec3(1.0, 1.0, 1.0));
-    engine.load_gltf("./assets/cube/Cube.gltf", node).expect("failed to load gltf");
+    engine.load_gltf("./assets/khronos/cube/Cube.gltf", node).expect("failed to load gltf");
 
     self.thing = Some(node);
 

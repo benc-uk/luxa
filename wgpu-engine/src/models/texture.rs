@@ -82,18 +82,4 @@ impl Texture {
 
     Self::from_image(device, queue, &image::DynamicImage::ImageRgba8(img), format, Some(label))
   }
-
-  #[allow(dead_code)]
-  pub(crate) fn bind_group_entries(&self) -> [wgpu::BindGroupEntry<'_>; 2] {
-    [
-      wgpu::BindGroupEntry {
-        binding: 0,
-        resource: wgpu::BindingResource::TextureView(&self.view),
-      },
-      wgpu::BindGroupEntry {
-        binding: 1,
-        resource: wgpu::BindingResource::Sampler(&self.sampler),
-      },
-    ]
-  }
 }
