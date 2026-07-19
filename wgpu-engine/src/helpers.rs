@@ -2,7 +2,7 @@
 // Helpers for wgpu
 // ======================================================================================
 
-pub fn uniform_entry(binding: u32, visibility: wgpu::ShaderStages) -> wgpu::BindGroupLayoutEntry {
+pub(crate) fn uniform_entry(binding: u32, visibility: wgpu::ShaderStages) -> wgpu::BindGroupLayoutEntry {
   wgpu::BindGroupLayoutEntry {
     binding,
     visibility,
@@ -15,7 +15,7 @@ pub fn uniform_entry(binding: u32, visibility: wgpu::ShaderStages) -> wgpu::Bind
   }
 }
 
-pub fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+pub(crate) fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
   wgpu::BindGroupLayoutEntry {
     binding,
     visibility: wgpu::ShaderStages::FRAGMENT,
@@ -28,7 +28,7 @@ pub fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
   }
 }
 
-pub fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+pub(crate) fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
   wgpu::BindGroupLayoutEntry {
     binding,
     visibility: wgpu::ShaderStages::FRAGMENT,
@@ -37,21 +37,21 @@ pub fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
   }
 }
 
-pub fn bind_buffer(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
+pub(crate) fn bind_buffer(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
   wgpu::BindGroupEntry {
     binding,
     resource: buffer.as_entire_binding(),
   }
 }
 
-pub fn bind_texture(binding: u32, texture: &crate::models::Texture) -> wgpu::BindGroupEntry<'_> {
+pub(crate) fn bind_texture(binding: u32, texture: &crate::models::Texture) -> wgpu::BindGroupEntry<'_> {
   wgpu::BindGroupEntry {
     binding,
     resource: wgpu::BindingResource::TextureView(&texture.view),
   }
 }
 
-pub fn bind_sampler(binding: u32, texture: &crate::models::Texture) -> wgpu::BindGroupEntry<'_> {
+pub(crate) fn bind_sampler(binding: u32, texture: &crate::models::Texture) -> wgpu::BindGroupEntry<'_> {
   wgpu::BindGroupEntry {
     binding,
     resource: wgpu::BindingResource::Sampler(&texture.sampler),

@@ -18,6 +18,7 @@ struct ParsedGltf {
   images: Vec<DynamicImage>,
 }
 
+#[derive(Debug)]
 struct ParsedMaterial {
   base_color_factor: [f32; 4],
   base_color_texture: Option<ParsedTexture>,
@@ -35,7 +36,7 @@ struct ParsedMaterial {
   double_sided: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct ParsedTexture {
   image_index: usize,
   tex_coord: u32,
@@ -68,34 +69,42 @@ impl Engine {
     let ParsedGltf { materials, primitives, images } = parsed;
     let mut material_handles = Vec::with_capacity(materials.len());
 
-    for material in materials {
-      println!("Creating material with base color {:?}", material.base_color_factor);
+    for parsed_mat in materials {
+      let out_mat = self.create_material(None);
 
-      let base_color_texture = match material.base_color_texture {
-        Some(texture) => Some(load_material_texture(self, &images, texture, wgpu::TextureFormat::Rgba8UnormSrgb)?),
-        None => None,
-      };
+      if let Some(base_color_texture) = parsed_mat.base_color_texture {
+        let texture_handle = load_material_texture(self, &images, base_color_texture, wgpu::TextureFormat::Rgba8UnormSrgb)?;
+        self.material_mut(out_mat).set_base_color_texture(texture_handle);
+      }
 
-      let handle = self.create_material(base_color_texture);
-      self.material_mut(handle).set_base_color_factor(material.base_color_factor);
+      if let Some(metallic_roughness_texture) = parsed_mat.metallic_roughness_texture {
+        let texture_handle = load_material_texture(self, &images, metallic_roughness_texture, wgpu::TextureFormat::Rgba8Unorm)?;
+        self.material_mut(out_mat).set_metallic_roughness_texture(texture_handle);
+      }
 
-      // TODO: Apply these when Material exposes the corresponding setters.
-      let _material_stubs = (
-        material.metallic_factor,
-        material.roughness_factor,
-        material.metallic_roughness_texture,
-        material.normal_texture,
-        material.normal_scale,
-        material.occlusion_texture,
-        material.occlusion_strength,
-        material.emissive_factor,
-        material.emissive_texture,
-        material.alpha_mode,
-        material.alpha_cutoff,
-        material.double_sided,
-      );
+      if let Some(emissive_texture) = parsed_mat.emissive_texture {
+        let texture_handle = load_material_texture(self, &images, emissive_texture, wgpu::TextureFormat::Rgba8UnormSrgb)?;
+        self.material_mut(out_mat).set_emissive_texture(texture_handle);
+      }
 
-      material_handles.push(handle);
+      if let Some(normal_texture) = parsed_mat.normal_texture {
+        let texture_handle = load_material_texture(self, &images, normal_texture, wgpu::TextureFormat::Rgba8Unorm)?;
+        self.material_mut(out_mat).set_normal_texture(texture_handle);
+      }
+
+      if let Some(occlusion_texture) = parsed_mat.occlusion_texture {
+        let texture_handle = load_material_texture(self, &images, occlusion_texture, wgpu::TextureFormat::Rgba8Unorm)?;
+        self.material_mut(out_mat).set_occlusion_texture(texture_handle);
+      }
+
+      self.material_mut(out_mat).set_base_color_factor(parsed_mat.base_color_factor);
+      self.material_mut(out_mat).set_metallic_factor(parsed_mat.metallic_factor);
+      self.material_mut(out_mat).set_roughness_factor(parsed_mat.roughness_factor);
+      self.material_mut(out_mat).set_normal_scale(parsed_mat.normal_scale);
+      self.material_mut(out_mat).set_occlusion_strength(parsed_mat.occlusion_strength);
+      self.material_mut(out_mat).set_emissive_factor(parsed_mat.emissive_factor);
+
+      material_handles.push(out_mat);
     }
 
     let mut mesh_handles = Vec::with_capacity(primitives.len());
@@ -110,14 +119,20 @@ impl Engine {
 }
 
 fn parse_document(document: &gltf::Document, buffers: &[gltf::buffer::Data], images: Vec<gltf::image::Data>) -> Result<ParsedGltf> {
+  println!(
+    "Parsing glTF document with {} scenes, {} materials, and {} images",
+    document.scenes().len(),
+    document.materials().len(),
+    images.len()
+  );
   let scene = document.default_scene().or_else(|| document.scenes().next()).context("glTF document contains no scenes")?;
   let materials = document
     .materials()
     .map(|material| {
-      println!("Parsed material {:?}", material.name());
+      println!("Parsing material {}: {}", material.index().unwrap(), material.name().unwrap());
       let pbr = material.pbr_metallic_roughness();
 
-      ParsedMaterial {
+      let parsed_mat = ParsedMaterial {
         base_color_factor: pbr.base_color_factor(),
         base_color_texture: pbr.base_color_texture().map(|info| ParsedTexture {
           image_index: info.texture().source().index(),
@@ -147,7 +162,9 @@ fn parse_document(document: &gltf::Document, buffers: &[gltf::buffer::Data], ima
         alpha_mode: material.alpha_mode(),
         alpha_cutoff: material.alpha_cutoff(),
         double_sided: material.double_sided(),
-      }
+      };
+      println!("  {:?}", parsed_mat);
+      parsed_mat
     })
     .collect();
 
@@ -174,6 +191,9 @@ fn load_material_texture(engine: &mut Engine, images: &[DynamicImage], texture: 
   let image = images
     .get(texture.image_index)
     .with_context(|| format!("material references missing glTF image {}", texture.image_index))?;
+
+  println!("  Creating texture for glTF image {} with format {:?}", texture.image_index, format);
+
   engine.create_texture_from_image(image, format, &format!("glTF image {}", texture.image_index))
 }
 
@@ -237,7 +257,11 @@ fn parse_primitive(primitive: gltf::Primitive<'_>, transform: Mat4, buffers: &[g
     bail!("unsupported primitive mode {:?}; only triangle lists are supported", primitive.mode());
   }
 
-  println!("Parsing primitive {} with transform:\n{}", primitive.index(), transform);
+  println!(
+    "Parsing primitive {} with material: {}",
+    primitive.index(),
+    primitive.material().name().unwrap_or("<unnamed>")
+  );
 
   let reader = primitive.reader(|buffer| buffers.get(buffer.index()).map(|data| data.0.as_slice()));
   let positions = reader

@@ -1,4 +1,8 @@
-use super::*;
+use super::Engine;
+use crate::models::{Material, Mesh, Texture};
+use crate::nodes::Node3D;
+use glam::{Quat, Vec3};
+use slotmap::new_key_type;
 
 new_key_type! {
   pub struct MeshHandle;
@@ -8,27 +12,15 @@ new_key_type! {
   pub struct SceneHandle;
 }
 
-// impl Node3DHandle {
-//   pub fn set_position(&self, engine: &mut Engine, position: Vec3) {
-//     let node = engine.node_mut(*self);
-//     node.set_position(position);
-//   }
-
-//   pub fn set_rotation(&self, engine: &mut Engine, rotation: Quat) {
-//     let node = engine.node_mut(*self);
-//     node.set_rotation(rotation);
-//   }
-
-//   pub fn set_scale(&self, engine: &mut Engine, scale: Vec3) -> Self {
-//     let node = engine.node_mut(*self);
-//     node.set_scale(scale);
-//     *self
-//   }
-// }
-
 impl Engine {
   pub fn create_scene(&mut self) -> (SceneHandle, Node3DHandle) {
-    let root_node = Node3D::new(&self.device, glam::Vec3::ZERO, glam::Quat::IDENTITY, glam::Vec3::new(1.0, 1.0, 1.0));
+    let root_node = Node3D::new(
+      &self.device,
+      &self.bind_group_layouts.node,
+      glam::Vec3::ZERO,
+      glam::Quat::IDENTITY,
+      glam::Vec3::new(1.0, 1.0, 1.0),
+    );
     let root_handle = self.nodes.insert(root_node);
     let scene_handle = self.scenes.insert(root_handle);
     log::info!("Created scene with handle {:?}", scene_handle);
@@ -51,13 +43,15 @@ impl Engine {
   }
 
   pub fn create_material(&mut self, texture: Option<TextureHandle>) -> MaterialHandle {
-    if let Some(texture_handle) = texture {
-      self.textures.get(texture_handle).expect("Invalid texture handle");
+    let mut material = Material::new(&self.device, &self.bind_group_layouts.material, &self.material_fallbacks, &self.textures);
+
+    if let Some(texture) = texture {
+      self.textures.get(texture).expect("Invalid texture handle");
+      material.set_base_color_texture(texture);
     }
 
-    let mut material = Material::new(&self.device, &self.material_fallbacks);
-    material.set_base_color_texture(texture);
     let handle = self.materials.insert(material);
+
     log::info!("Created material with handle {:?}", handle);
     handle
   }
@@ -69,22 +63,22 @@ impl Engine {
   }
 
   pub fn create_node(&mut self, parent: Node3DHandle, position: Vec3, rotation: Quat, scale: Vec3) -> Node3DHandle {
-    let node = Node3D::new(&self.device, position, rotation, scale);
+    let node = Node3D::new(&self.device, &self.bind_group_layouts.node, position, rotation, scale);
     self.attach(node, parent)
   }
 
   pub fn create_mesh_node(&mut self, parent: Node3DHandle, meshes: Vec<MeshHandle>, position: Vec3, rotation: Quat, scale: Vec3) -> Node3DHandle {
-    let node = Node3D::new_mesh(&self.device, meshes, position, rotation, scale);
+    let node = Node3D::new_mesh(&self.device, &self.bind_group_layouts.node, meshes, position, rotation, scale);
     self.attach(node, parent)
   }
 
   pub fn create_camera_node(&mut self, parent: Node3DHandle, position: Vec3, look_at: Vec3, scale: Vec3, fovy: f32, znear: f32, zfar: f32) -> Node3DHandle {
-    let node = Node3D::new_camera(&self.device, position, look_at, scale, fovy, znear, zfar);
+    let node = Node3D::new_camera(&self.device, &self.bind_group_layouts.node, position, look_at, scale, fovy, znear, zfar);
     self.attach(node, parent)
   }
 
   pub fn create_light_node(&mut self, parent: Node3DHandle, position: Vec3, color: Vec3, intensity: f32) -> Node3DHandle {
-    let node = Node3D::new_light(&self.device, position, color, intensity);
+    let node = Node3D::new_light(&self.device, &self.bind_group_layouts.node, position, color, intensity);
     self.attach(node, parent)
   }
 

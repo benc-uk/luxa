@@ -1,29 +1,28 @@
-use anyhow::*;
+use anyhow::Result;
 use image::GenericImageView;
 
-use crate::engine::TextureHandle;
-use slotmap::SlotMap;
-
-pub struct Texture {
+pub(crate) struct Texture {
   #[allow(unused)]
-  pub texture: wgpu::Texture,
-  pub view: wgpu::TextureView,
-  pub sampler: wgpu::Sampler,
-  pub label: String,
+  pub(crate) texture: wgpu::Texture,
+  pub(crate) view: wgpu::TextureView,
+  pub(crate) sampler: wgpu::Sampler,
+  #[allow(dead_code)]
+  pub(crate) label: String,
 }
 
 impl Texture {
-  pub fn from_bytes(device: &wgpu::Device, queue: &wgpu::Queue, bytes: &[u8], format: wgpu::TextureFormat, label: &str) -> Result<Self> {
+  #[allow(dead_code)]
+  pub(crate) fn from_bytes(device: &wgpu::Device, queue: &wgpu::Queue, bytes: &[u8], format: wgpu::TextureFormat, label: &str) -> Result<Self> {
     let img = image::load_from_memory(bytes)?;
     Self::from_image(device, queue, &img, format, Some(label))
   }
 
-  pub fn from_file(device: &wgpu::Device, queue: &wgpu::Queue, path: &str) -> Result<Self> {
+  pub(crate) fn from_file(device: &wgpu::Device, queue: &wgpu::Queue, path: &str) -> Result<Self> {
     let img = image::open(path)?;
     Self::from_image(device, queue, &img, wgpu::TextureFormat::Rgba8UnormSrgb, Some(path))
   }
 
-  pub fn from_image(device: &wgpu::Device, queue: &wgpu::Queue, img: &image::DynamicImage, format: wgpu::TextureFormat, label: Option<&str>) -> Result<Self> {
+  pub(crate) fn from_image(device: &wgpu::Device, queue: &wgpu::Queue, img: &image::DynamicImage, format: wgpu::TextureFormat, label: Option<&str>) -> Result<Self> {
     let rgba = img.to_rgba8();
     let dimensions = img.dimensions();
 
@@ -61,9 +60,9 @@ impl Texture {
 
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-      address_mode_u: wgpu::AddressMode::ClampToEdge,
-      address_mode_v: wgpu::AddressMode::ClampToEdge,
-      address_mode_w: wgpu::AddressMode::ClampToEdge,
+      address_mode_u: wgpu::AddressMode::Repeat,
+      address_mode_v: wgpu::AddressMode::Repeat,
+      address_mode_w: wgpu::AddressMode::Repeat,
       mag_filter: wgpu::FilterMode::Linear,
       min_filter: wgpu::FilterMode::Nearest,
       mipmap_filter: wgpu::MipmapFilterMode::Nearest,
@@ -78,13 +77,14 @@ impl Texture {
     })
   }
 
-  pub fn new_solid_color(device: &wgpu::Device, queue: &wgpu::Queue, color: [u8; 4], format: wgpu::TextureFormat, label: &str) -> Result<Self> {
+  pub(crate) fn new_solid_color(device: &wgpu::Device, queue: &wgpu::Queue, color: [u8; 4], format: wgpu::TextureFormat, label: &str) -> Result<Self> {
     let img = image::ImageBuffer::from_pixel(1, 1, image::Rgba(color));
 
     Self::from_image(device, queue, &image::DynamicImage::ImageRgba8(img), format, Some(label))
   }
 
-  pub fn bind_group_entries(&self) -> [wgpu::BindGroupEntry<'_>; 2] {
+  #[allow(dead_code)]
+  pub(crate) fn bind_group_entries(&self) -> [wgpu::BindGroupEntry<'_>; 2] {
     [
       wgpu::BindGroupEntry {
         binding: 0,
@@ -96,8 +96,4 @@ impl Texture {
       },
     ]
   }
-}
-
-pub(crate) fn texture_or_fallback<'a>(textures: &'a SlotMap<TextureHandle, Texture>, handle: Option<TextureHandle>, fallback: &'a Texture) -> &'a Texture {
-  handle.and_then(|handle| textures.get(handle)).unwrap_or(fallback)
 }

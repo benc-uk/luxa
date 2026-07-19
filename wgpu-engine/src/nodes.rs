@@ -1,7 +1,4 @@
-use crate::{
-  engine::{MeshHandle, Node3DHandle},
-  helpers::uniform_entry,
-};
+use crate::engine::{MeshHandle, Node3DHandle};
 use glam::{Mat4, Quat, Vec3};
 use wgpu::util::DeviceExt;
 
@@ -29,14 +26,14 @@ pub struct Node3D {
   uniform_buffer: wgpu::Buffer, // Holds the world transform matrix for this node, which is updated each frame
 }
 
-pub enum NodeKind {
+pub(crate) enum NodeKind {
   Empty,
   Mesh(MeshData),
   Camera(CameraData),
   Light(LightData),
 }
 
-pub struct CameraData {
+pub(crate) struct CameraData {
   pub fovy: f32,
   pub znear: f32,
   pub zfar: f32,
@@ -44,17 +41,17 @@ pub struct CameraData {
   pub up: Vec3,     // usually Vec3::Y
 }
 
-pub struct MeshData {
+pub(crate) struct MeshData {
   pub mesh_handles: Vec<MeshHandle>,
 }
 
-pub struct LightData {
+pub(crate) struct LightData {
   pub color: Vec3,
   pub intensity: f32,
 }
 
 impl CameraData {
-  pub fn view_proj(&self, world_pos: Vec3, aspect: f32) -> Mat4 {
+  pub(crate) fn view_proj(&self, world_pos: Vec3, aspect: f32) -> Mat4 {
     let eye = if (self.target - world_pos).length_squared() < 1e-12 {
       world_pos + Vec3::NEG_Z // degenerate guard: target == eye
     } else {
@@ -67,7 +64,7 @@ impl CameraData {
 }
 
 impl Node3D {
-  pub(crate) fn new(device: &wgpu::Device, position: Vec3, rotation: Quat, scale: Vec3) -> Self {
+  pub(crate) fn new(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, position: Vec3, rotation: Quat, scale: Vec3) -> Self {
     let uniform = NodeUniform {
       model_matrix: Mat4::IDENTITY.to_cols_array(), // Updated below
       normal_matrix: Mat4::IDENTITY.to_cols_array(),
@@ -78,8 +75,6 @@ impl Node3D {
       contents: bytemuck::cast_slice(&[uniform]),
       usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
-
-    let bind_group_layout = Self::get_bind_group_layout(device);
 
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
       label: Some("Node Bind Group"),
@@ -109,15 +104,15 @@ impl Node3D {
     node
   }
 
-  pub(crate) fn new_mesh(device: &wgpu::Device, meshes: Vec<MeshHandle>, position: Vec3, rotation: Quat, scale: Vec3) -> Self {
-    let mut node = Self::new(device, position, rotation, scale);
+  pub(crate) fn new_mesh(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, meshes: Vec<MeshHandle>, position: Vec3, rotation: Quat, scale: Vec3) -> Self {
+    let mut node = Self::new(device, bind_group_layout, position, rotation, scale);
     node.kind = NodeKind::Mesh(MeshData { mesh_handles: meshes });
     node
   }
 
-  pub(crate) fn new_camera(device: &wgpu::Device, position: Vec3, look_at: Vec3, scale: Vec3, fovy: f32, znear: f32, zfar: f32) -> Self {
+  pub(crate) fn new_camera(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, position: Vec3, look_at: Vec3, scale: Vec3, fovy: f32, znear: f32, zfar: f32) -> Self {
     let rotation = Quat::from_rotation_arc(glam::vec3(0.0, 0.0, -1.0), (look_at - position).normalize());
-    let mut node = Self::new(device, position, rotation, scale);
+    let mut node = Self::new(device, bind_group_layout, position, rotation, scale);
     node.kind = NodeKind::Camera(CameraData {
       fovy,
       znear,
@@ -129,10 +124,10 @@ impl Node3D {
     node
   }
 
-  pub(crate) fn new_light(device: &wgpu::Device, position: Vec3, color: Vec3, intensity: f32) -> Self {
+  pub(crate) fn new_light(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, position: Vec3, color: Vec3, intensity: f32) -> Self {
     let rotation = Quat::IDENTITY;
     let scale = Vec3::ONE;
-    let mut node = Self::new(device, position, rotation, scale);
+    let mut node = Self::new(device, bind_group_layout, position, rotation, scale);
     node.kind = NodeKind::Light(LightData { color, intensity });
     node
   }
@@ -219,13 +214,6 @@ impl Node3D {
     &self.bind_group
   }
 
-  pub(crate) fn get_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
-    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-      label: Some("Node Bind Group Layout"),
-      entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX)],
-    })
-  }
-
   pub(crate) fn upload_world_mat(&mut self, queue: &wgpu::Queue) {
     self.uniform.model_matrix = self.world_matrix.to_cols_array();
     let normal_mat = Mat4::from_mat3(glam::Mat3::from_mat4(self.world_matrix).inverse().transpose());
@@ -249,6 +237,10 @@ impl Node3D {
 
   pub(crate) fn is_light(&self) -> bool {
     matches!(self.kind, NodeKind::Light(_))
+  }
+
+  pub(crate) fn is_mesh(&self) -> bool {
+    matches!(self.kind, NodeKind::Mesh(_))
   }
 
   pub(crate) fn light_data(&self) -> Option<&LightData> {

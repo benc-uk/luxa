@@ -10,5 +10,8 @@
     "cargo clippy": true,
     "cargo clean": true,
     "uniq": true
-  }
+  },
+  "wgsl-analyzer.inlayHints.typeHints": false,
+  "wgsl-analyzer.inlayHints.parameterHints": false,
+  "wgsl-analyzer.showDependenciesExplorer": true
 }

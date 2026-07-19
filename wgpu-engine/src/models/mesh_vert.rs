@@ -18,7 +18,7 @@ impl Vertex {
   const ATTRIBUTES: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x3];
 
   // Get a description of the vertex buffer layout for this vertex type. This is used when creating the render pipeline.
-  pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+  pub(crate) fn desc() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {
       array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
       step_mode: wgpu::VertexStepMode::Vertex,
@@ -66,7 +66,7 @@ impl Mesh {
     &self.index_buffer
   }
 
-  pub fn num_indices(&self) -> u32 {
+  pub(crate) fn num_indices(&self) -> u32 {
     self.indices_count
   }
 

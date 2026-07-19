@@ -1,5 +1,5 @@
 // Initialization of wgpu with surface, device, queue and surface configuration
-pub async fn init(
+pub(crate) async fn init(
   size: crate::common::Size,
   surface_target: impl Into<wgpu::SurfaceTarget<'static>>,
 ) -> anyhow::Result<(wgpu::Surface<'static>, wgpu::Device, wgpu::Queue, wgpu::SurfaceConfiguration)> {
@@ -39,7 +39,7 @@ pub async fn init(
 
 // Create a "standard" render pipeline from the given shader string
 // Lots of defaults are used here, we could provide more options in the future if needed
-pub fn create_pipeline(
+pub(crate) fn create_pipeline(
   device: &wgpu::Device,
   target_format: wgpu::TextureFormat,
   shader_str: &str,
@@ -109,7 +109,8 @@ pub fn create_pipeline(
   device.create_render_pipeline(pipeline_desc)
 }
 
-pub fn create_depth_texture(device: &wgpu::Device, surf_config: &wgpu::SurfaceConfiguration) -> (wgpu::Texture, wgpu::TextureView) {
+// Create a depth texture for Z-buffering 3D scenes, and a view for it
+pub(crate) fn create_depth_texture(device: &wgpu::Device, surf_config: &wgpu::SurfaceConfiguration) -> (wgpu::Texture, wgpu::TextureView) {
   let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
     label: Some("Depth Texture"),
     size: wgpu::Extent3d {
@@ -131,7 +132,7 @@ pub fn create_depth_texture(device: &wgpu::Device, surf_config: &wgpu::SurfaceCo
 }
 
 // Create a render pass with the given encoder and texture view
-pub fn create_render_pass<'a>(encoder: &'a mut wgpu::CommandEncoder, view: &wgpu::TextureView, depth_texture_view: Option<&wgpu::TextureView>) -> wgpu::RenderPass<'a> {
+pub(crate) fn create_render_pass<'a>(encoder: &'a mut wgpu::CommandEncoder, view: &wgpu::TextureView, depth_texture_view: Option<&wgpu::TextureView>) -> wgpu::RenderPass<'a> {
   // Build the optional depth attachment up front so the descriptor below stays flat and readable.
   let depth_stencil_attachment = depth_texture_view.map(|depth_view| wgpu::RenderPassDepthStencilAttachment {
     view: depth_view,

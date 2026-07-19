@@ -1,4 +1,13 @@
-use super::*;
+use super::{Engine, Node3DHandle, SceneHandle, gpu};
+use crate::helpers;
+use glam::Mat4;
+
+pub(crate) struct BindGroupLayouts {
+  pub(crate) frame_cam: wgpu::BindGroupLayout,
+  pub(crate) material: wgpu::BindGroupLayout,
+  pub(crate) node: wgpu::BindGroupLayout,
+  pub(crate) lights: wgpu::BindGroupLayout,
+}
 
 impl Engine {
   pub fn resize(&mut self, new_size: crate::common::Size) {
@@ -30,7 +39,7 @@ impl Engine {
     }
 
     for material in self.materials.values_mut() {
-      material.upload_gpu(&self.device, &self.queue, &self.textures, &self.material_fallbacks);
+      material.upload_gpu(&self.device, &self.queue, &self.textures);
     }
 
     // Root node for rendering all nodes in this scene
@@ -54,18 +63,23 @@ impl Engine {
       if node_hdl == camera_node {
         if let Some(vp) = node.view_proj(self.aspect) {
           self.camera_uniform.view_proj = vp.to_cols_array();
+          self.camera_uniform.pos = node.world_position().to_array();
           self.queue.write_buffer(&self.camera_uniform_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
           camera_found = true;
         }
       }
 
+      // Light nodes are added to the lights uniform
       if node.is_light() {
         if let Some(light_data) = node.light_data() {
           self.lights_uniform.add_light(light_data, world.w_axis.truncate());
         }
       }
 
-      render_list.push(node_hdl);
+      // Output list of nodes to render is just all nodes that have meshes, in depth-first order
+      if node.is_mesh() {
+        render_list.push(node_hdl);
+      }
 
       for &child in node.children() {
         stack.push((child, world));
@@ -77,6 +91,8 @@ impl Engine {
       return Ok(());
     }
 
+    // Really important to upload the world matrices for all nodes before rendering
+    // This also uploads the world matrix & position for the camera node
     for &node_hdl in &render_list {
       self.nodes[node_hdl].upload_world_mat(&self.queue);
     }
@@ -140,5 +156,44 @@ impl Engine {
     output.present();
 
     Ok(())
+  }
+
+  pub(crate) fn init_bind_group_layouts(device: &wgpu::Device) -> BindGroupLayouts {
+    BindGroupLayouts {
+      frame_cam: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Uniform Bind Group Layout"),
+        entries: &[
+          helpers::uniform_entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT), // camera uniform
+          helpers::uniform_entry(1, wgpu::ShaderStages::VERTEX_FRAGMENT), // time uniform
+        ],
+      }),
+
+      material: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Material Bind Group Layout"),
+        entries: &[
+          helpers::uniform_entry(0, wgpu::ShaderStages::FRAGMENT),
+          helpers::texture_entry(1),
+          helpers::sampler_entry(2),
+          helpers::texture_entry(3),
+          helpers::sampler_entry(4),
+          helpers::texture_entry(5),
+          helpers::sampler_entry(6),
+          helpers::texture_entry(7),
+          helpers::sampler_entry(8),
+          helpers::texture_entry(9),
+          helpers::sampler_entry(10),
+        ],
+      }),
+
+      node: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Node Bind Group Layout"),
+        entries: &[helpers::uniform_entry(0, wgpu::ShaderStages::VERTEX)],
+      }),
+
+      lights: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Lights Bind Group Layout"),
+        entries: &[helpers::uniform_entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT)],
+      }),
+    }
   }
 }

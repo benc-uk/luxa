@@ -1,19 +1,20 @@
 mod gpu;
+mod lighting;
 mod render;
 mod resources;
 
-use glam::{Mat4, Quat, Vec3};
-use slotmap::{SlotMap, new_key_type};
+use glam::Mat4;
+use slotmap::SlotMap;
 use web_time::Instant;
 
-use crate::Node3D;
 use crate::common::Size;
-use crate::helpers;
 use crate::models::{Material, MaterialFallbacks, Mesh, Texture, Vertex};
+use crate::nodes::Node3D;
 use gpu::{create_depth_texture, create_pipeline, init};
+pub(crate) use lighting::{LightUniform, LightsUniform};
 
-use bytemuck::Zeroable;
-pub use resources::*;
+use render::BindGroupLayouts;
+pub use resources::{MaterialHandle, MeshHandle, Node3DHandle, SceneHandle, TextureHandle};
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -32,60 +33,23 @@ impl FrameUniform {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct CameraUniform {
   view_proj: [f32; 16],
+  pos: [f32; 3],
+  _padding: f32, // pad to 16 bytes for alignment
 }
 
 impl CameraUniform {
   fn new() -> Self {
     Self {
       view_proj: Mat4::IDENTITY.to_cols_array(),
-    }
-  }
-}
-
-const MAX_LIGHTS: usize = 16;
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct LightUniform {
-  position: [f32; 3],
-  intensity: f32, // fills the w slot so position+intensity = one 16-byte vec4
-  color: [f32; 3],
-  _padding: f32, // pads color up to a full 16-byte vec4
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct LightsUniform {
-  count: u32,
-  _padding: [u32; 3], // push the array to offset 16 (array align = 16)
-  lights: [LightUniform; MAX_LIGHTS],
-}
-
-impl LightsUniform {
-  fn new() -> Self {
-    Self {
-      count: 0,
-      _padding: [0; 3],
-      lights: [LightUniform::zeroed(); MAX_LIGHTS],
-    }
-  }
-
-  fn add_light(&mut self, light_data: &crate::nodes::LightData, world_pos: Vec3) {
-    if self.count as usize >= MAX_LIGHTS {
-      log::warn!("Maximum number of lights ({}) exceeded, ignoring additional lights", MAX_LIGHTS);
-      return;
-    }
-
-    let idx = self.count as usize;
-    self.lights[idx] = LightUniform {
-      position: [world_pos.x, world_pos.y, world_pos.z],
-      intensity: light_data.intensity,
-      color: [light_data.color.x, light_data.color.y, light_data.color.z],
+      pos: [0.0, 0.0, 0.0],
       _padding: 0.0,
-    };
-    self.count += 1;
+    }
   }
 }
+
+const BRDF: &str = include_str!("../shaders/pbr.wgsl");
+// const COMMON: &str = include_str!("../shaders/common.wgsl");
+const MAIN: &str = include_str!("../shaders/shader.wgsl");
 
 pub struct Engine {
   surface: wgpu::Surface<'static>,
@@ -105,6 +69,7 @@ pub struct Engine {
   is_surface_configured: bool,
 
   // BG bind group for frame-level uniforms (camera, frame time, etc)
+  bind_group_layouts: BindGroupLayouts,
   frame_uniform: FrameUniform,
   frame_uniform_buffer: wgpu::Buffer,
   camera_uniform: CameraUniform,
@@ -130,19 +95,7 @@ impl Engine {
     let (surface, device, queue, surf_config) = init(size, surface_target).await?;
 
     // Step 2 - Create bind group layouts for frame-camera uniforms, lights, materials and node (model)
-    let frame_cam_bg_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-      label: Some("Uniform Bind Group Layout"),
-      entries: &[
-        helpers::uniform_entry(0, wgpu::ShaderStages::VERTEX),          // camera uniform
-        helpers::uniform_entry(1, wgpu::ShaderStages::VERTEX_FRAGMENT), // time uniform
-      ],
-    });
-    let lights_bg_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-      label: Some("Lights Bind Group Layout"),
-      entries: &[helpers::uniform_entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT)],
-    });
-    let mat_bg_layout = Material::get_bind_group_layout(&device);
-    let node_bg_layout = Node3D::get_bind_group_layout(&device);
+    let bind_group_layouts = Self::init_bind_group_layouts(&device);
 
     // Step 3 - Create the uniforms & buffers for frame and camera, and lights
     let frame_uniform = FrameUniform::new();
@@ -161,7 +114,7 @@ impl Engine {
 
     let frame_cam_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
       label: Some("Frame Bind Group"),
-      layout: &frame_cam_bg_layout,
+      layout: &bind_group_layouts.frame_cam,
       entries: &[
         wgpu::BindGroupEntry {
           binding: 0,
@@ -184,7 +137,7 @@ impl Engine {
 
     let lights_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
       label: Some("Lights Bind Group"),
-      layout: &lights_bg_layout,
+      layout: &bind_group_layouts.lights,
       entries: &[wgpu::BindGroupEntry {
         binding: 0,
         resource: lights_uniform_buffer.as_entire_binding(),
@@ -195,9 +148,14 @@ impl Engine {
     let render_pipe = create_pipeline(
       &device,
       surf_config.format.add_srgb_suffix(),
-      include_str!("../shaders/shader.wgsl"),
+      &format!("{BRDF}\n{MAIN}").as_str(),
       &[Vertex::desc()],
-      &[Some(&frame_cam_bg_layout), Some(&mat_bg_layout), Some(&node_bg_layout), Some(&lights_bg_layout)],
+      &[
+        Some(&bind_group_layouts.frame_cam),
+        Some(&bind_group_layouts.material),
+        Some(&bind_group_layouts.node),
+        Some(&bind_group_layouts.lights),
+      ],
       true,
     );
 
@@ -205,10 +163,10 @@ impl Engine {
     let (_depth_texture, depth_texture_view) = create_depth_texture(&device, &surf_config);
 
     // Step 7 - Create a default texture and material
-    //let default_texture = Texture::new_flat_color(&device, &queue, [255, 255, 255, 255], "default_texture")?;
+    let mut textures = SlotMap::with_key();
     let mut materials = SlotMap::with_key();
-    let material_fallbacks = MaterialFallbacks::new(&device, &queue)?;
-    let default_material = materials.insert(Material::new(&device, &material_fallbacks));
+    let material_fallbacks = MaterialFallbacks::new(&device, &queue, &mut textures)?;
+    let default_material = materials.insert(Material::new(&device, &bind_group_layouts.material, &material_fallbacks, &textures));
 
     log::info!("Render pipeline created");
 
@@ -227,6 +185,8 @@ impl Engine {
 
       start_time: Instant::now(),
       is_surface_configured: true,
+
+      bind_group_layouts,
       frame_uniform,
       frame_uniform_buffer,
       camera_uniform,
@@ -240,16 +200,12 @@ impl Engine {
       scenes: SlotMap::with_key(),
       meshes: SlotMap::with_key(),
       materials,
-      textures: SlotMap::with_key(),
+      textures,
     })
   }
 
   pub(crate) fn get_device(&self) -> &wgpu::Device {
     &self.device
-  }
-
-  pub(crate) fn get_queue(&self) -> &wgpu::Queue {
-    &self.queue
   }
 
   pub fn default_material(&self) -> MaterialHandle {

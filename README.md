@@ -21,3 +21,12 @@ and desktop and browser build instructions.
 The reusable engine hides the raw `wgpu` resource graph behind engine-owned meshes, materials,
 textures, nodes and handles. See the [glTF parser guide](wgpu-engine/PARSER.md) for its asset-loading
 flow, terminology, supported features and current limitations.
+
+### Helpful Stuff
+
+https://3dviewer.net/
+https://sandbox.babylonjs.com/
+https://gltf-viewer.donmccurdy.com/
+
+https://github.khronos.org/glTF-Assets/
+https://github.khronos.org/glTF-Sample-Viewer-Release/

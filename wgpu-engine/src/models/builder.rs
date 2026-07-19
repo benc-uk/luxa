@@ -2,7 +2,7 @@ use crate::engine::{Engine, MaterialHandle, MeshHandle};
 use crate::models::{Mesh, Vertex};
 
 // Returns a cube model with 24 vertices and 36 indices (6 faces, 2 triangles per face)
-pub fn primitive_cube() -> (Vec<Vertex>, Vec<u16>) {
+pub(crate) fn primitive_cube() -> (Vec<Vertex>, Vec<u16>) {
   // A cube needs 24 vertices (4 per face)
   let vertices: Vec<Vertex> = vec![
     // Front face (+z)
@@ -145,7 +145,7 @@ pub fn primitive_cube() -> (Vec<Vertex>, Vec<u16>) {
 // - `slices`: number of vertical segments (longitude, going around the equator). Clamped to a minimum of 3.
 // - `stacks`: number of horizontal bands (latitude, pole to pole). Clamped to a minimum of 2.
 // Higher values mean more polygons and a smoother sphere.
-pub fn primitive_sphere(slices: u32, stacks: u32) -> (Vec<Vertex>, Vec<u16>) {
+pub(crate) fn primitive_sphere(slices: u32, stacks: u32) -> (Vec<Vertex>, Vec<u16>) {
   use std::f32::consts::PI;
 
   let slices = slices.max(3);

@@ -7,6 +7,6 @@ mod nodes;
 mod parser;
 
 pub use common::Size;
-pub use engine::{Engine, Node3DHandle, SceneHandle};
-pub use models::{Material, Mesh, MeshBuilder, Vertex};
+pub use engine::{Engine, MaterialHandle, MeshHandle, Node3DHandle, SceneHandle, TextureHandle};
+pub use models::{AlphaMode, Material, Mesh, MeshBuilder, Vertex};
 pub use nodes::Node3D;
