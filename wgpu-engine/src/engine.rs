@@ -1,5 +1,6 @@
 mod gpu;
 mod lighting;
+mod pipelines;
 mod render;
 mod resources;
 
@@ -10,9 +11,10 @@ use web_time::Instant;
 use crate::common::Size;
 use crate::models::{Material, MaterialFallbacks, Mesh, Texture, Vertex};
 use crate::nodes::Node3D;
-use gpu::{create_depth_texture, create_pipeline, init};
-pub(crate) use lighting::{LightUniform, LightsUniform};
+use gpu::{create_depth_texture, init};
+pub(crate) use lighting::LightsUniform;
 
+use pipelines::Pipelines;
 use render::BindGroupLayouts;
 pub use resources::{MaterialHandle, MeshHandle, Node3DHandle, SceneHandle, TextureHandle};
 use wgpu::util::DeviceExt;
@@ -47,8 +49,7 @@ impl CameraUniform {
   }
 }
 
-const BRDF: &str = include_str!("../shaders/pbr.wgsl");
-// const COMMON: &str = include_str!("../shaders/common.wgsl");
+const PBR: &str = include_str!("../shaders/pbr.wgsl");
 const MAIN: &str = include_str!("../shaders/shader.wgsl");
 
 pub struct Engine {
@@ -57,7 +58,7 @@ pub struct Engine {
   device: wgpu::Device,
   queue: wgpu::Queue,
   surf_config: wgpu::SurfaceConfiguration,
-  render_pipe: wgpu::RenderPipeline,
+  pipelines: Pipelines,
 
   // Depth buffer for 3D rendering
   depth_texture_view: wgpu::TextureView,
@@ -145,18 +146,17 @@ impl Engine {
     });
 
     // Step 5 - Create the shaders & render pipeline
-    let render_pipe = create_pipeline(
+    let pipelines = Pipelines::new(
       &device,
-      surf_config.format.add_srgb_suffix(),
-      &format!("{BRDF}\n{MAIN}").as_str(),
+      format!("{}\n{}", PBR, MAIN).as_str(),
+      surf_config.format,
       &[Vertex::desc()],
       &[
-        Some(&bind_group_layouts.frame_cam),
-        Some(&bind_group_layouts.material),
-        Some(&bind_group_layouts.node),
-        Some(&bind_group_layouts.lights),
+        Some(&bind_group_layouts.frame_cam), // group 0
+        Some(&bind_group_layouts.material),  // group 1
+        Some(&bind_group_layouts.node),      // group 2
+        Some(&bind_group_layouts.lights),    // group 3
       ],
-      true,
     );
 
     // Step 6 - Create a depth texture for Z-buffering 3D scenes, and a view for it
@@ -177,7 +177,7 @@ impl Engine {
       device,
       queue,
       surf_config,
-      render_pipe,
+      pipelines,
 
       depth_texture_view,
       material_fallbacks,

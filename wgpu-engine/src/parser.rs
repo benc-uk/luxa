@@ -3,6 +3,8 @@
 // See ../PARSER.md for the loading flow, terminology and supported features.
 // ======================================================================================
 
+use std::collections::HashMap;
+
 use anyhow::{Context, Result, bail};
 use glam::{Mat3, Mat4, Quat, Vec3};
 use image::{DynamicImage, ImageBuffer, Luma, LumaA, Rgb, Rgba};
@@ -69,31 +71,37 @@ impl Engine {
     let ParsedGltf { materials, primitives, images } = parsed;
     let mut material_handles = Vec::with_capacity(materials.len());
 
+    // A single glTF image can be referenced by many materials (and by several slots within one
+    // material). Cache the uploaded texture per (image index, format) so we only push each unique
+    // image to the GPU once. Format is part of the key because the same image may be needed as both
+    // sRGB (colour) and linear Unorm (data).
+    let mut texture_cache: HashMap<(usize, wgpu::TextureFormat), TextureHandle> = HashMap::new();
+
     for parsed_mat in materials {
       let out_mat = self.create_material(None);
 
       if let Some(base_color_texture) = parsed_mat.base_color_texture {
-        let texture_handle = load_material_texture(self, &images, base_color_texture, wgpu::TextureFormat::Rgba8UnormSrgb)?;
+        let texture_handle = load_material_texture(self, &images, &mut texture_cache, base_color_texture, wgpu::TextureFormat::Rgba8UnormSrgb)?;
         self.material_mut(out_mat).set_base_color_texture(texture_handle);
       }
 
       if let Some(metallic_roughness_texture) = parsed_mat.metallic_roughness_texture {
-        let texture_handle = load_material_texture(self, &images, metallic_roughness_texture, wgpu::TextureFormat::Rgba8Unorm)?;
+        let texture_handle = load_material_texture(self, &images, &mut texture_cache, metallic_roughness_texture, wgpu::TextureFormat::Rgba8Unorm)?;
         self.material_mut(out_mat).set_metallic_roughness_texture(texture_handle);
       }
 
       if let Some(emissive_texture) = parsed_mat.emissive_texture {
-        let texture_handle = load_material_texture(self, &images, emissive_texture, wgpu::TextureFormat::Rgba8UnormSrgb)?;
+        let texture_handle = load_material_texture(self, &images, &mut texture_cache, emissive_texture, wgpu::TextureFormat::Rgba8UnormSrgb)?;
         self.material_mut(out_mat).set_emissive_texture(texture_handle);
       }
 
       if let Some(normal_texture) = parsed_mat.normal_texture {
-        let texture_handle = load_material_texture(self, &images, normal_texture, wgpu::TextureFormat::Rgba8Unorm)?;
+        let texture_handle = load_material_texture(self, &images, &mut texture_cache, normal_texture, wgpu::TextureFormat::Rgba8Unorm)?;
         self.material_mut(out_mat).set_normal_texture(texture_handle);
       }
 
       if let Some(occlusion_texture) = parsed_mat.occlusion_texture {
-        let texture_handle = load_material_texture(self, &images, occlusion_texture, wgpu::TextureFormat::Rgba8Unorm)?;
+        let texture_handle = load_material_texture(self, &images, &mut texture_cache, occlusion_texture, wgpu::TextureFormat::Rgba8Unorm)?;
         self.material_mut(out_mat).set_occlusion_texture(texture_handle);
       }
 
@@ -103,6 +111,19 @@ impl Engine {
       self.material_mut(out_mat).set_normal_scale(parsed_mat.normal_scale);
       self.material_mut(out_mat).set_occlusion_strength(parsed_mat.occlusion_strength);
       self.material_mut(out_mat).set_emissive_factor(parsed_mat.emissive_factor);
+
+      self.material_mut(out_mat).set_alpha_mode(match parsed_mat.alpha_mode {
+        gltf::material::AlphaMode::Opaque => crate::models::AlphaMode::Opaque,
+        gltf::material::AlphaMode::Mask => crate::models::AlphaMode::Mask,
+        gltf::material::AlphaMode::Blend => crate::models::AlphaMode::Blend,
+      });
+      println!("  Material   alpha mode: {:?}", parsed_mat.alpha_mode);
+
+      if let Some(cutoff) = parsed_mat.alpha_cutoff {
+        self.material_mut(out_mat).set_alpha_cutoff(cutoff);
+      }
+
+      self.material_mut(out_mat).set_double_sided(parsed_mat.double_sided);
 
       material_handles.push(out_mat);
     }
@@ -125,7 +146,9 @@ fn parse_document(document: &gltf::Document, buffers: &[gltf::buffer::Data], ima
     document.materials().len(),
     images.len()
   );
+
   let scene = document.default_scene().or_else(|| document.scenes().next()).context("glTF document contains no scenes")?;
+
   let materials = document
     .materials()
     .map(|material| {
@@ -183,9 +206,20 @@ fn parse_document(document: &gltf::Document, buffers: &[gltf::buffer::Data], ima
   Ok(ParsedGltf { materials, primitives, images })
 }
 
-fn load_material_texture(engine: &mut Engine, images: &[DynamicImage], texture: ParsedTexture, format: wgpu::TextureFormat) -> Result<TextureHandle> {
+fn load_material_texture(
+  engine: &mut Engine,
+  images: &[DynamicImage],
+  cache: &mut HashMap<(usize, wgpu::TextureFormat), TextureHandle>,
+  texture: ParsedTexture,
+  format: wgpu::TextureFormat,
+) -> Result<TextureHandle> {
   if texture.tex_coord != 0 {
     log::warn!("glTF texture uses TEXCOORD_{}; the engine currently samples TEXCOORD_0", texture.tex_coord);
+  }
+
+  // Check the cache first, because the same glTF image may be referenced by multiple materials (and by multiple slots within one material).
+  if let Some(&handle) = cache.get(&(texture.image_index, format)) {
+    return Ok(handle);
   }
 
   let image = images
@@ -194,7 +228,10 @@ fn load_material_texture(engine: &mut Engine, images: &[DynamicImage], texture: 
 
   println!("  Creating texture for glTF image {} with format {:?}", texture.image_index, format);
 
-  engine.create_texture_from_image(image, format, &format!("glTF image {}", texture.image_index))
+  let handle = engine.create_texture_from_image(image, format, &format!("glTF image {}", texture.image_index))?;
+  cache.insert((texture.image_index, format), handle);
+
+  Ok(handle)
 }
 
 fn gltf_image_to_dynamic_image(data: gltf::image::Data) -> Result<DynamicImage> {

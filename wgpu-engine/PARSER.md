@@ -79,8 +79,8 @@ The original glTF node hierarchy is therefore flattened. Transforms are baked in
 
 `add_parsed_gltf` converts temporary parsed data into resources owned by `Engine`:
 
-1. Referenced base-colour images become engine `Texture` resources.
-2. Each glTF material becomes an engine `Material`.
+1. Referenced images become engine `Texture` resources, deduplicated per `(image index, format)`.
+2. Each glTF material becomes an engine `Material` with its factors and texture handles applied.
 3. Each glTF primitive becomes one engine `Mesh` with its material handle.
 4. All imported meshes are attached to one new mesh node below `parent`.
 
@@ -108,28 +108,38 @@ glTF image index
     -> TextureHandle returned
 ```
 
-There is currently no texture deduplication. If several materials reference the same glTF image, each creates its own engine `Texture`. This keeps the loading path simple.
+Textures are deduplicated. `add_parsed_gltf` holds a cache keyed by `(image index, format)`, and
+`load_material_texture` returns the cached `TextureHandle` on a hit instead of uploading again. If
+several materials, or several slots within one material, reference the same glTF image at the same
+format, only one engine `Texture` is created.
 
-The image conversion helpers preserve the decoded glTF pixel format while constructing an `image::DynamicImage`. `Texture::from_image` then converts it to RGBA bytes for upload.
+The format is part of the cache key because the same image can legitimately be needed under two
+formats: for example as sRGB when used as a base-colour texture and as linear `Rgba8Unorm` when used
+as packed data. Those produce two distinct engine `Texture` resources.
+
+The image conversion helpers preserve the decoded glTF pixel format while constructing an
+`image::DynamicImage`. `Texture::from_image` then converts it to RGBA bytes for upload.
 
 ## Material support
 
-The parser reads all core glTF metallic-roughness properties, but only properties supported by the current `Material` API are applied.
+The parser reads all core glTF metallic-roughness properties. Most are now applied to the engine `Material`; only draw-state properties (alpha mode/cutoff and double-sided) remain unapplied.
 
-| glTF property                  | Parsed |   Applied    |
-| ------------------------------ | :----: | :----------: |
-| Base colour factor             |  Yes   |     Yes      |
-| Base colour texture            |  Yes   | Yes, as sRGB |
-| Metallic factor                |  Yes   |   Not yet    |
-| Roughness factor               |  Yes   |   Not yet    |
-| Metallic-roughness texture     |  Yes   |   Not yet    |
-| Normal texture and scale       |  Yes   |   Not yet    |
-| Occlusion texture and strength |  Yes   |   Not yet    |
-| Emissive factor and texture    |  Yes   |   Not yet    |
-| Alpha mode and cutoff          |  Yes   |   Not yet    |
-| Double-sided                   |  Yes   |   Not yet    |
+| glTF property                  | Parsed |      Applied      |
+| ------------------------------ | :----: | :---------------: |
+| Base colour factor             |  Yes   |        Yes        |
+| Base colour texture            |  Yes   |   Yes, as sRGB    |
+| Metallic factor                |  Yes   |        Yes        |
+| Roughness factor               |  Yes   |        Yes        |
+| Metallic-roughness texture     |  Yes   |    Yes, linear    |
+| Normal texture and scale       |  Yes   |    Yes, linear    |
+| Occlusion texture and strength |  Yes   |    Yes, linear    |
+| Emissive factor and texture    |  Yes   | Yes, texture sRGB |
+| Alpha mode and cutoff          |  Yes   |      Not yet      |
+| Double-sided                   |  Yes   |      Not yet      |
 
-Unsupported values are retained in `ParsedMaterial` and collected in `_material_stubs` at the engine-resource boundary. This marks where each future `Material` setter should be called without pretending the renderer already supports it.
+Alpha mode, alpha cutoff and double-sided are parsed into `ParsedMaterial` but not yet applied,
+because they require pipeline or draw-state support rather than a uniform or bind-group update. The
+parsed values are held on `ParsedMaterial` to mark where those future setters should be called.
 
 Texture colour spaces must be selected by usage:
 
@@ -150,8 +160,7 @@ Texture colour spaces must be selected by usage:
 - Only `TEXCOORD_0` is stored by `Vertex`. Other requested UV sets produce a warning and still use UV set 0 at render time.
 - Tangents, vertex colours, skins, morph targets, animations and cameras are not imported.
 - glTF sampler settings are not imported. Engine textures use the sampler created by `Texture::from_image`.
-- Textures are not deduplicated.
-- Only base-colour material properties currently affect rendering.
+- Alpha mode, alpha cutoff and double-sided are parsed but do not yet affect rendering.
 
 ## Extending material support
 
@@ -160,7 +169,6 @@ For each new material property:
 1. Add or complete the corresponding `Material` setter.
 2. Apply the parsed value in `add_parsed_gltf`.
 3. For a texture slot, call `load_material_texture` with the correct sRGB or linear format.
-4. Remove that property from `_material_stubs`.
-5. Update the WGSL shader and render state where required.
+4. Update the WGSL shader and render state where required.
 
 Factors only require a uniform update. Texture changes require the material bind group to be rebuilt. Alpha mode and double-sided rendering also require pipeline or draw-state support, not just uniform fields.

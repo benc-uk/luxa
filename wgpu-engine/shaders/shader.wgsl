@@ -38,6 +38,7 @@ struct Material {
     normal_scale: f32,
     occlusion_strength: f32,
     alpha_cutoff: f32,
+    alpha_mode: u32, // 0 = opaque, 1 = mask, 2 = blend
 };
  
 struct Light {
@@ -122,6 +123,11 @@ fn vert_main(in: VertexInput) -> VertexOutput {
 fn frag_main(in: VertexOutput) -> @location(0) vec4f {
     let albedo_rgba = get_albedo(in.tex_coord);
     let albedo = albedo_rgba.rgb;
+
+    if material.alpha_mode == 1u && albedo_rgba.a < material.alpha_cutoff {
+        discard;
+    }
+
     let mr = get_metallic_roughness(in.tex_coord);
     let metallic = mr.x;
     let roughness = mr.y;

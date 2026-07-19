@@ -23,6 +23,7 @@ impl MaterialFallbacks {
       wgpu::TextureFormat::Rgba8UnormSrgb,
       "white_srgb",
     )?);
+
     let white_linear = textures.insert(Texture::new_solid_color(
       device,
       queue,
@@ -30,6 +31,7 @@ impl MaterialFallbacks {
       wgpu::TextureFormat::Rgba8Unorm,
       "white_linear",
     )?);
+
     let flat_normal = textures.insert(Texture::new_solid_color(
       device,
       queue,
@@ -90,6 +92,8 @@ struct MaterialUniform {
   normal_scale: f32,
   occlusion_strength: f32,
   alpha_cutoff: f32,
+  alpha_mode: u32,    // 0 = opaque, 1 = mask, 2 = blend
+  _padding: [u32; 3], // pad to 16 bytes for alignment
 }
 
 impl Material {
@@ -102,6 +106,8 @@ impl Material {
       normal_scale: 1.0,
       occlusion_strength: 1.0,
       alpha_cutoff: 0.5,
+      alpha_mode: 0, // opaque
+      _padding: [0; 3],
     };
 
     let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -195,7 +201,15 @@ impl Material {
   }
 
   pub fn set_alpha_mode(&mut self, mode: AlphaMode) {
+    self.uniform.alpha_mode = match mode {
+      AlphaMode::Opaque => 0,
+      AlphaMode::Mask => 1,
+      AlphaMode::Blend => 2,
+    };
+
+    println!("Setting alpha mode to ({})", self.uniform.alpha_mode);
     self.alpha_mode = mode;
+    self.uniform_dirty = true;
   }
 
   pub fn set_alpha_cutoff(&mut self, cutoff: f32) {
@@ -231,6 +245,14 @@ impl Material {
   pub fn set_emissive_texture(&mut self, texture: TextureHandle) {
     self.emissive_texture = texture;
     self.bind_group_dirty = true;
+  }
+
+  pub fn is_blended(&self) -> bool {
+    matches!(self.alpha_mode, AlphaMode::Blend)
+  }
+
+  pub fn is_double_sided(&self) -> bool {
+    self.double_sided
   }
 
   pub(crate) fn get_bind_group(&self) -> &wgpu::BindGroup {

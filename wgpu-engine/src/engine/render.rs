@@ -1,6 +1,9 @@
+use std::vec;
+
 use super::{Engine, Node3DHandle, SceneHandle, gpu};
 use crate::helpers;
 use glam::Mat4;
+use wgpu::wgc::pipeline;
 
 pub(crate) struct BindGroupLayouts {
   pub(crate) frame_cam: wgpu::BindGroupLayout,
@@ -130,9 +133,11 @@ impl Engine {
     // its &mut borrow of the encoder) before we call encoder.finish() below.
     {
       let mut render_pass = gpu::create_render_pass(&mut encoder, &view, Some(&self.depth_texture_view));
-      render_pass.set_pipeline(&self.render_pipe);
       render_pass.set_bind_group(0, &self.frame_cam_bind_group, &[]);
       render_pass.set_bind_group(3, &self.lights_bind_group, &[]);
+
+      // Place to store all blended meshes, which we will render after all opaque meshes
+      let mut blended_meshes = vec![];
 
       // Walk the scene graph: each mesh-carrying node draws its meshes, looking up each
       // mesh's material by handle from the engine's arenas.
@@ -143,11 +148,19 @@ impl Engine {
           let mesh = self.meshes.get(mesh_handle).expect("Invalid mesh handle");
           let material = self.materials.get(mesh.material_handle()).expect("Invalid material handle");
 
-          render_pass.set_bind_group(1, material.get_bind_group(), &[]);
-          render_pass.set_vertex_buffer(0, mesh.vertex_buffer().slice(..));
-          render_pass.set_index_buffer(mesh.index_buffer().slice(..), wgpu::IndexFormat::Uint16);
-          render_pass.draw_indexed(0..mesh.num_indices(), 0, 0..1);
+          if material.is_blended() {
+            blended_meshes.push((mesh, material));
+          } else {
+            render_mesh(&mut render_pass, mesh, material, &self.pipelines);
+          }
         }
+      }
+
+      // 🔥 TODO: Sort blended meshes by depth from camera, so they are drawn back to front. This is important for correct alpha blending.
+
+      // Render all blended meshes after all opaque meshes, so they are drawn on top of the opaque ones.
+      for (mesh, material) in blended_meshes {
+        render_mesh(&mut render_pass, mesh, material, &self.pipelines);
       }
     }
 
@@ -196,4 +209,15 @@ impl Engine {
       }),
     }
   }
+}
+
+// Free function to render a mesh with a material, using the given render pass and pipelines. This is called from Engine::render()
+fn render_mesh(render_pass: &mut wgpu::RenderPass, mesh: &super::Mesh, material: &super::Material, pipelines: &super::Pipelines) {
+  let pipeline = pipelines.select(material.is_blended(), material.is_double_sided());
+  render_pass.set_pipeline(&pipeline);
+
+  render_pass.set_bind_group(1, material.get_bind_group(), &[]);
+  render_pass.set_vertex_buffer(0, mesh.vertex_buffer().slice(..));
+  render_pass.set_index_buffer(mesh.index_buffer().slice(..), wgpu::IndexFormat::Uint16);
+  render_pass.draw_indexed(0..mesh.num_indices(), 0, 0..1);
 }
