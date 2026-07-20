@@ -102,7 +102,6 @@ pub(crate) fn create_pipeline(
     Some(_) => Some(false),
     None => Some(true),
   };
-  println!("depth_write_enabled: {:?}", depth_write_enabled);
 
   let pipeline_desc = &wgpu::RenderPipelineDescriptor {
     label: Some("Render Pipeline"),

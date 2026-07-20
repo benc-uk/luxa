@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use glam::{Quat, Vec3, vec3};
-use wgpu_engine::{Engine, MeshBuilder, Size};
+use luxa::{Engine, Node3DHandle, SceneHandle, Size};
 use winit::dpi::LogicalSize;
 use winit::{
   application::ApplicationHandler,
@@ -14,9 +14,9 @@ use winit::{
 struct App {
   engine: Option<Engine>,
   window: Option<Arc<Window>>,
-  scene: Option<wgpu_engine::SceneHandle>,
-  camera: Option<wgpu_engine::Node3DHandle>,
-  thing: Option<wgpu_engine::Node3DHandle>,
+  scene: Option<SceneHandle>,
+  camera: Option<Node3DHandle>,
+  thing: Option<Node3DHandle>,
 }
 
 impl ApplicationHandler for App {
@@ -27,7 +27,7 @@ impl ApplicationHandler for App {
 
     let window = Arc::new(
       event_loop
-        .create_window(Window::default_attributes().with_title("WGPU-Engine Harness").with_inner_size(LogicalSize::new(1524, 600)))
+        .create_window(Window::default_attributes().with_title("Luxa Test Harness").with_inner_size(LogicalSize::new(1024, 1024)))
         .expect("failed to create window"),
     );
 
@@ -46,12 +46,15 @@ impl ApplicationHandler for App {
     engine.create_light_node(root, vec3(5.3, 1.2, 3.5), vec3(0.7, 0.8, 1.0), 8.7);
     engine.create_light_node(root, vec3(-7.0, 2.0, 1.0), vec3(1.0, 0.3, 0.1), 16.4);
     engine.create_light_node(root, vec3(3.0, 5.0, 4.0), vec3(0.1, 0.8, 0.3), 16.4);
+
     self.camera = Some(engine.create_camera_node(root, vec3(0.0, 0.0, 2.0), vec3(0.0, 0.0, 0.0), Vec3::ONE, 45.0, 0.1, 100.0));
     let node = engine.create_node(root, vec3(0.0, 0.0, 0.0), Quat::IDENTITY, vec3(1.0, 1.0, 1.0));
-    let model_hdl = engine.load_gltf("./assets/khronos/AlphaBlendModeTest.glb", node).expect("failed to load gltf");
-    engine.node_mut(model_hdl).set_position(vec3(0.0, 1.0, 0.0));
-    // engine.node_mut(model_hdl).set_scale(vec3(18.0, 18.0, 18.0));
-    engine.load_gltf("./assets/khronos/cube/Cube.gltf", node).expect("failed to load gltf");
+    let pot = engine.load_gltf("./assets/khronos/pot_of_coals.glb", node).expect("failed to load gltf");
+    engine.node_mut(pot).set_position(vec3(0.0, 0.0, 0.0));
+    engine.node_mut(pot).set_scale(vec3(20.0, 20.0, 20.0));
+    let cube = engine.load_gltf("./assets/khronos/cube/Cube.gltf", node).expect("failed to load gltf");
+    engine.node_mut(cube).set_scale(vec3(1.0, 1.0, 1.0));
+    engine.node_mut(cube).set_position(vec3(0.0, -1.0, 0.0));
 
     self.thing = Some(node);
 
@@ -84,15 +87,13 @@ impl ApplicationHandler for App {
           engine.update();
           let t = engine.t();
 
-          // let rotation = Quat::from_rotation_y(t * 0.5);
-          // engine.node_mut(self.thing.unwrap()).set_rotation(rotation);
+          let rotation = Quat::from_rotation_y(t * 0.5);
+          engine.node_mut(self.thing.unwrap()).set_rotation(rotation);
 
           let camera = engine.node_mut(self.camera.unwrap());
-          // bob camera up and down a bit
-          //let h = 0.8 + 0.2 * (t * 0.1 * std::f32::consts::PI).sin();
-          let h = 3.2; //
-          camera.set_position(vec3(0.0, h, 4.0));
-          camera.look_at(vec3(0.0, h - 1.6, 0.0));
+          let h = 1.9;
+          camera.set_position(vec3(0.0, h, 2.4));
+          camera.look_at(vec3(0.0, h - 1.3, 0.0));
 
           // Render happens here!
           if let Some(scene) = self.scene {

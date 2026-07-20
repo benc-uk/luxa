@@ -3,7 +3,6 @@ use std::vec;
 use super::{Engine, Node3DHandle, SceneHandle, gpu};
 use crate::helpers;
 use glam::Mat4;
-use wgpu::wgc::pipeline;
 
 pub(crate) struct BindGroupLayouts {
   pub(crate) frame_cam: wgpu::BindGroupLayout,
@@ -149,7 +148,7 @@ impl Engine {
           let material = self.materials.get(mesh.material_handle()).expect("Invalid material handle");
 
           if material.is_blended() {
-            blended_meshes.push((mesh, material));
+            blended_meshes.push((node, mesh, material));
           } else {
             render_mesh(&mut render_pass, mesh, material, &self.pipelines);
           }
@@ -159,7 +158,8 @@ impl Engine {
       // 🔥 TODO: Sort blended meshes by depth from camera, so they are drawn back to front. This is important for correct alpha blending.
 
       // Render all blended meshes after all opaque meshes, so they are drawn on top of the opaque ones.
-      for (mesh, material) in blended_meshes {
+      for (node, mesh, material) in blended_meshes {
+        render_pass.set_bind_group(2, node.get_bind_group(), &[]);
         render_mesh(&mut render_pass, mesh, material, &self.pipelines);
       }
     }

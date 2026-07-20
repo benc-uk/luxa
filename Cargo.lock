@@ -856,8 +856,8 @@ dependencies = [
  "env_logger 0.11.11",
  "glam",
  "log",
+ "luxa",
  "pollster 0.4.0",
- "wgpu-engine",
  "winit",
 ]
 
@@ -1172,6 +1172,22 @@ name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
+
+[[package]]
+name = "luxa"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "env_logger 0.11.11",
+ "glam",
+ "gltf",
+ "image 0.24.9",
+ "log",
+ "slotmap",
+ "web-time",
+ "wgpu",
+]
 
 [[package]]
 name = "memchr"
@@ -2579,22 +2595,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e592c1bbef6ad047647ae6e666ebd8cee7a32bb4544d9700ec96cbf73230257"
 dependencies = [
  "wgpu-hal",
-]
-
-[[package]]
-name = "wgpu-engine"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "env_logger 0.11.11",
- "glam",
- "gltf",
- "image 0.24.9",
- "log",
- "slotmap",
- "web-time",
- "wgpu",
 ]
 
 [[package]]
