@@ -1,6 +1,6 @@
 // Initialization of wgpu with surface, device, queue and surface configuration
 pub(crate) async fn init(
-  size: crate::common::Size,
+  size: (u32, u32),
   surface_target: impl Into<wgpu::SurfaceTarget<'static>>,
 ) -> anyhow::Result<(wgpu::Surface<'static>, wgpu::Device, wgpu::Queue, wgpu::SurfaceConfiguration)> {
   // The instance helps us access the graphics card and create surfaces for rendering
@@ -25,7 +25,7 @@ pub(crate) async fn init(
   log::info!("Surface capabilities: {:?}", surface_caps);
 
   // Use get_default_config to make life easier
-  let mut surf_config = surface.get_default_config(&adapter, size.width, size.height).expect("surface config failed");
+  let mut surf_config = surface.get_default_config(&adapter, size.0, size.1).expect("surface config failed");
   // Add the sRGB format to the list of view formats if it's not already there, so we can use it for rendering
   let render_format = surf_config.format.add_srgb_suffix();
   if render_format != surf_config.format {
@@ -33,6 +33,8 @@ pub(crate) async fn init(
   }
 
   surface.configure(&device, &surf_config);
+
+  log::info!("Surface configured with format {:?} and size {}x{}", render_format, surf_config.width, surf_config.height);
 
   Ok((surface, device, queue, surf_config))
 }
@@ -55,6 +57,8 @@ pub(crate) fn create_depth_texture(device: &wgpu::Device, surf_config: &wgpu::Su
   });
 
   let depth_texture_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+  log::debug!("Depth buffer created...");
 
   (depth_texture, depth_texture_view)
 }

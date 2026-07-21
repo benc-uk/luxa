@@ -2,6 +2,7 @@
 // Structs and functions for describing vertex data and example models to render.
 // ======================================================================================
 
+use crate::common::Aabb;
 use crate::engine::{Engine, MaterialHandle};
 use wgpu::util::DeviceExt;
 
@@ -34,10 +35,14 @@ pub struct Mesh {
   indices_count: u32,
   vertex_buffer: wgpu::Buffer,
   index_buffer: wgpu::Buffer,
+  aabb: Aabb,
 }
 
 impl Mesh {
   pub fn new(engine: &Engine, vertices: Vec<Vertex>, indices: Vec<u16>, material: MaterialHandle) -> Self {
+    let aabb = Aabb::from_vertices(&vertices);
+    log::info!("Mesh created AABB min: {:?}, max: {:?}", aabb.min, aabb.max);
+
     let vertex_buffer = engine.get_device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
       label: Some("Vertex Buffer"),
       contents: bytemuck::cast_slice(&vertices),
@@ -55,7 +60,13 @@ impl Mesh {
       indices_count: indices.len() as u32,
       vertex_buffer,
       index_buffer,
+      aabb,
     }
+  }
+
+  // The axis-aligned bounding box of this mesh, in the mesh's local coordinate space.
+  pub fn aabb(&self) -> Aabb {
+    self.aabb
   }
 
   pub(crate) fn vertex_buffer(&self) -> &wgpu::Buffer {
@@ -72,5 +83,9 @@ impl Mesh {
 
   pub(crate) fn material_handle(&self) -> MaterialHandle {
     self.material
+  }
+
+  pub fn center(&self) -> glam::Vec3 {
+    self.aabb.center()
   }
 }

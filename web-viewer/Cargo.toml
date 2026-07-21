@@ -1,0 +1,30 @@
+[package]
+name = "web-viewer"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+log = "0.4"
+wasm-bindgen = "0.2"
+console_log = "1.0"
+console_error_panic_hook = "0.1"
+luxa = { path = "../luxa" }
+wasm-bindgen-futures = "0.4.76"
+glam = "0.33.2"
+gloo-net = "0.6"
+
+[dependencies.web-sys]
+features = [
+  "Window",
+  "Document",
+  "Element",
+  "HtmlElement",
+  "HtmlCanvasElement",
+  "Location",
+  "MouseEvent",
+  "WheelEvent",
+]
+version = "0.3"

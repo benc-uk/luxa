@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.103"
 bytemuck = "1.25.1"
-env_logger = "0.11.11"
 glam = "0.33.2"
 gltf = "1.4.1"
 log = "0.4.33"
@@ -19,3 +18,9 @@ wgpu = "29.0"
 version = "0.24"
 default-features = false
 features = ["jpeg", "png"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.11.11"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["HtmlCanvasElement"] }

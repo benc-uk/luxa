@@ -58,7 +58,7 @@ impl Engine {
 
   pub(crate) fn add_mesh(&mut self, mesh: Mesh) -> MeshHandle {
     let handle = self.meshes.insert(mesh);
-    log::info!("Added mesh with handle {:?}", handle);
+    log::info!("Added mesh to cache with handle {:?}", handle);
     handle
   }
 
@@ -68,7 +68,7 @@ impl Engine {
   }
 
   pub fn create_mesh_node(&mut self, parent: Node3DHandle, meshes: Vec<MeshHandle>, position: Vec3, rotation: Quat, scale: Vec3) -> Node3DHandle {
-    let node = Node3D::new_mesh(&self.device, &self.bind_group_layouts.node, meshes, position, rotation, scale);
+    let node = Node3D::new_mesh(&self.device, &self.bind_group_layouts.node, &self.meshes, meshes, position, rotation, scale);
     self.attach(node, parent)
   }
 

@@ -1,5 +1,8 @@
+use crate::common::Aabb;
 use crate::engine::{MeshHandle, Node3DHandle};
+use crate::models::Mesh;
 use glam::{Mat4, Quat, Vec3};
+use slotmap::SlotMap;
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -19,6 +22,10 @@ pub struct Node3D {
   world_matrix: Mat4,
   parent: Option<Node3DHandle>,
   children: Option<Vec<Node3DHandle>>,
+
+  // Size and center of the node's AABB in world space, if it has a mesh or other size/volume
+  aabb: Option<Aabb>,
+  center: Option<Vec3>,
 
   // GPU resources
   bind_group: wgpu::BindGroup,
@@ -94,6 +101,8 @@ impl Node3D {
       world_matrix: Mat4::IDENTITY,
       parent: None,
       children: None,
+      aabb: None,
+      center: None,
 
       bind_group,
       uniform,
@@ -104,9 +113,34 @@ impl Node3D {
     node
   }
 
-  pub(crate) fn new_mesh(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, meshes: Vec<MeshHandle>, position: Vec3, rotation: Quat, scale: Vec3) -> Self {
+  pub(crate) fn new_mesh(
+    device: &wgpu::Device,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    mesh_arena: &SlotMap<MeshHandle, Mesh>,
+    mesh_handles: Vec<MeshHandle>,
+    position: Vec3,
+    rotation: Quat,
+    scale: Vec3,
+  ) -> Self {
     let mut node = Self::new(device, bind_group_layout, position, rotation, scale);
-    node.kind = NodeKind::Mesh(MeshData { mesh_handles: meshes });
+
+    // Compute the AABB and center of the node based on its meshes. This is useful for culling, camera framing, etc.
+    // The handles are just keys, so we look each mesh up in the engine's mesh arena to read its local AABB.
+    let mut aabb: Option<Aabb> = None;
+    for handle in &mesh_handles {
+      if let Some(mesh) = mesh_arena.get(*handle) {
+        let mesh_aabb = mesh.aabb();
+        aabb = Some(match aabb {
+          Some(current_aabb) => current_aabb.union(&mesh_aabb),
+          None => mesh_aabb,
+        });
+      }
+    }
+
+    node.aabb = aabb;
+    node.center = aabb.map(|aabb| aabb.center());
+
+    node.kind = NodeKind::Mesh(MeshData { mesh_handles });
     node
   }
 
@@ -248,5 +282,13 @@ impl Node3D {
       NodeKind::Light(data) => Some(data),
       _ => None,
     }
+  }
+
+  pub fn aabb(&self) -> Option<Aabb> {
+    self.aabb
+  }
+
+  pub fn center(&self) -> Option<Vec3> {
+    self.center
   }
 }

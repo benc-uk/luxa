@@ -238,6 +238,9 @@ impl MeshBuilder {
 
   pub fn build(self, engine: &mut Engine) -> MeshHandle {
     let mesh = Mesh::new(engine, self.verts, self.indices, self.material);
+
+    log::info!("MeshBuilder built mesh with blah and blah");
+
     engine.add_mesh(mesh)
   }
 }

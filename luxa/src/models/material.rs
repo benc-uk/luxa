@@ -207,7 +207,6 @@ impl Material {
       AlphaMode::Blend => 2,
     };
 
-    println!("Setting alpha mode to ({})", self.uniform.alpha_mode);
     self.alpha_mode = mode;
     self.uniform_dirty = true;
   }

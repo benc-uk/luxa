@@ -62,6 +62,8 @@ impl Pipelines {
       Some(wgpu::BlendState::ALPHA_BLENDING),
     );
 
+    log::info!("Render pipelines created");
+
     Self {
       opaque,
       opaque_double,

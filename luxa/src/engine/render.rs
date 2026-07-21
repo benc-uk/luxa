@@ -12,16 +12,21 @@ pub(crate) struct BindGroupLayouts {
 }
 
 impl Engine {
-  pub fn resize(&mut self, new_size: crate::common::Size) {
-    if new_size.width > 0 && new_size.height > 0 {
-      self.surf_config.width = new_size.width;
-      self.surf_config.height = new_size.height;
+  pub fn resize(&mut self, new_size: (u32, u32)) {
+    let w = new_size.0;
+    let h = new_size.1;
+
+    if w > 0 && h > 0 {
+      self.surf_config.width = w;
+      self.surf_config.height = h;
       self.surface.configure(&self.device, &self.surf_config);
       let (_depth_texture, depth_texture_view) = gpu::create_depth_texture(&self.device, &self.surf_config);
       self.depth_texture_view = depth_texture_view;
-      self.aspect = new_size.width as f32 / new_size.height as f32;
+      self.aspect = w as f32 / h as f32;
       self.is_surface_configured = true;
     }
+
+    log::info!("Resized surface to {w}x{h}, aspect ratio is now {}", self.aspect);
   }
 
   // TODO: This is all hard coded crap while weare figuring out how to do a scene graph and testing crap

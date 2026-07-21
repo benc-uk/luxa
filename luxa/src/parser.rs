@@ -117,7 +117,7 @@ impl Engine {
         gltf::material::AlphaMode::Mask => crate::models::AlphaMode::Mask,
         gltf::material::AlphaMode::Blend => crate::models::AlphaMode::Blend,
       });
-      println!("  Material   alpha mode: {:?}", parsed_mat.alpha_mode);
+      log::debug!("  Material   alpha mode: {:?}", parsed_mat.alpha_mode);
 
       if let Some(cutoff) = parsed_mat.alpha_cutoff {
         self.material_mut(out_mat).set_alpha_cutoff(cutoff);
@@ -140,7 +140,7 @@ impl Engine {
 }
 
 fn parse_document(document: &gltf::Document, buffers: &[gltf::buffer::Data], images: Vec<gltf::image::Data>) -> Result<ParsedGltf> {
-  println!(
+  log::info!(
     "Parsing glTF document with {} scenes, {} materials, and {} images",
     document.scenes().len(),
     document.materials().len(),
@@ -152,7 +152,7 @@ fn parse_document(document: &gltf::Document, buffers: &[gltf::buffer::Data], ima
   let materials = document
     .materials()
     .map(|material| {
-      println!("Parsing material {}: {}", material.index().unwrap(), material.name().unwrap());
+      log::debug!("Parsing material {}: {}", material.index().unwrap(), material.name().unwrap());
       let pbr = material.pbr_metallic_roughness();
 
       let parsed_mat = ParsedMaterial {
@@ -186,7 +186,7 @@ fn parse_document(document: &gltf::Document, buffers: &[gltf::buffer::Data], ima
         alpha_cutoff: material.alpha_cutoff(),
         double_sided: material.double_sided(),
       };
-      println!("  {:?}", parsed_mat);
+      log::debug!("  {:?}", parsed_mat);
       parsed_mat
     })
     .collect();
@@ -226,7 +226,7 @@ fn load_material_texture(
     .get(texture.image_index)
     .with_context(|| format!("material references missing glTF image {}", texture.image_index))?;
 
-  println!("  Creating texture for glTF image {} with format {:?}", texture.image_index, format);
+  log::debug!("  Creating texture for glTF image {} with format {:?}", texture.image_index, format);
 
   let handle = engine.create_texture_from_image(image, format, &format!("glTF image {}", texture.image_index))?;
   cache.insert((texture.image_index, format), handle);
@@ -294,7 +294,7 @@ fn parse_primitive(primitive: gltf::Primitive<'_>, transform: Mat4, buffers: &[g
     bail!("unsupported primitive mode {:?}; only triangle lists are supported", primitive.mode());
   }
 
-  println!(
+  log::debug!(
     "Parsing primitive {} with material: {}",
     primitive.index(),
     primitive.material().name().unwrap_or("<unnamed>")

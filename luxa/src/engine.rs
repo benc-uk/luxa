@@ -8,7 +8,6 @@ use glam::Mat4;
 use slotmap::SlotMap;
 use web_time::Instant;
 
-use crate::common::Size;
 use crate::models::{Material, MaterialFallbacks, Mesh, Texture, Vertex};
 use crate::nodes::Node3D;
 use gpu::{create_depth_texture, init};
@@ -89,8 +88,9 @@ pub struct Engine {
 }
 
 impl Engine {
-  pub async fn new(surface_target: impl Into<wgpu::SurfaceTarget<'static>>, size: Size) -> anyhow::Result<Self> {
-    let aspect = size.width as f32 / size.height as f32;
+  pub async fn new(surface_target: impl Into<wgpu::SurfaceTarget<'static>>, size: (u32, u32)) -> anyhow::Result<Self> {
+    log::info!("Creating new Luxa engine...");
+    let aspect = size.0 as f32 / size.1 as f32;
 
     // Step 1 - Core instance, surface, device & queue creation
     let (surface, device, queue, surf_config) = init(size, surface_target).await?;
@@ -146,10 +146,11 @@ impl Engine {
     });
 
     // Step 5 - Create the shaders & render pipeline
+    let target_format = surf_config.format.add_srgb_suffix(); // add_srgb_suffix is v important, otherwise it will not work on some platforms like web
     let pipelines = Pipelines::new(
       &device,
       format!("{}\n{}", PBR, MAIN).as_str(),
-      surf_config.format,
+      target_format,
       &[Vertex::desc()],
       &[
         Some(&bind_group_layouts.frame_cam), // group 0
@@ -168,7 +169,7 @@ impl Engine {
     let material_fallbacks = MaterialFallbacks::new(&device, &queue, &mut textures)?;
     let default_material = materials.insert(Material::new(&device, &bind_group_layouts.material, &material_fallbacks, &textures));
 
-    log::info!("Render pipeline created");
+    log::info!("Luxa engine created successfully");
 
     // Return the engine with all the resources created and ready to go
     Ok(Self {
@@ -202,6 +203,11 @@ impl Engine {
       materials,
       textures,
     })
+  }
+
+  #[cfg(target_arch = "wasm32")]
+  pub async fn new_from_canvas(canvas: web_sys::HtmlCanvasElement, size: (u32, u32)) -> anyhow::Result<Self> {
+    Self::new(wgpu::SurfaceTarget::Canvas(canvas), size).await
   }
 
   pub(crate) fn get_device(&self) -> &wgpu::Device {
