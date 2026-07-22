@@ -12,6 +12,9 @@ check:
 serve:
 	npx vite . --port 8000
 
+bundle: release
+	npx vite build
+
 fmt:
 	cargo fmt
 
