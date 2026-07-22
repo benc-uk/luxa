@@ -24,7 +24,7 @@ features = [
   "HtmlElement",
   "HtmlCanvasElement",
   "Location",
-  "MouseEvent",
+  "PointerEvent",
   "WheelEvent",
 ]
 version = "0.3"

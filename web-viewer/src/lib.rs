@@ -9,14 +9,23 @@ use js_helpers::{add_listener, fetch_bytes};
 use luxa::Engine;
 use std::cell::{Cell, RefCell};
 use wasm_bindgen::prelude::*;
-use web_sys::{MouseEvent, WheelEvent};
+use web_sys::{PointerEvent, WheelEvent};
+
+// One tracked pointer (mouse button held, finger, or pen) and its last-seen canvas position.
+struct Pointer {
+  id: i32,
+  x: f64,
+  y: f64,
+}
 
 struct CamState {
   yaw: f32,
   pitch: f32,
   radius: f32,
-  dragging: bool,
-  last_cursor: Option<(f64, f64)>,
+  // Pointers currently pressed on the canvas. 1 => orbit drag, 2 => pinch zoom.
+  pointers: Vec<Pointer>,
+  // Distance between the two fingers on the previous pinch frame, for computing the delta.
+  pinch_dist: Option<f64>,
 }
 
 thread_local! {
@@ -27,8 +36,8 @@ thread_local! {
     yaw: 0.0,
     pitch: 0.0,
     radius: 2.0,
-    dragging: false,
-    last_cursor: None,
+    pointers: Vec::new(),
+    pinch_dist: None,
   });
 }
 
@@ -123,45 +132,92 @@ fn build_scene(model: Vec<u8>) {
 fn setup_input(canvas: &web_sys::HtmlCanvasElement) {
   let target: &web_sys::EventTarget = canvas.as_ref();
 
-  add_listener::<MouseEvent, _>(target, "mousedown", |e| {
+  // A pointer went down: start tracking it and grab pointer capture so we keep
+  // receiving its move/up events even if it strays outside the canvas mid-drag.
+  // `canvas` is a JS handle, so cloning it is cheap (it just bumps a reference).
+  let canvas_dn = canvas.clone();
+  add_listener::<PointerEvent, _>(target, "pointerdown", move |e| {
+    e.prevent_default();
+    let id = e.pointer_id();
+    let _ = canvas_dn.set_pointer_capture(id);
     CAM_STATE.with(|c| {
       let mut c = c.borrow_mut();
-      c.dragging = true;
-      c.last_cursor = Some((e.client_x() as f64, e.client_y() as f64));
-    });
-  });
-
-  add_listener::<MouseEvent, _>(target, "mouseup", |_e| {
-    CAM_STATE.with(|c| {
-      let mut c = c.borrow_mut();
-      c.dragging = false;
-      c.last_cursor = None;
-    });
-  });
-
-  add_listener::<MouseEvent, _>(target, "mousemove", |e| {
-    CAM_STATE.with(|c| {
-      let mut c = c.borrow_mut();
-      if !c.dragging {
-        return;
-      }
       let (x, y) = (e.client_x() as f64, e.client_y() as f64);
-      if let Some((px, py)) = c.last_cursor {
-        let dx = (x - px) as f32;
-        let dy = (y - py) as f32;
-        c.yaw -= dx * 0.01;
-        c.pitch = (c.pitch - dy * 0.01).clamp(-1.5, 1.5); // avoid flipping at the poles
+      if let Some(p) = c.pointers.iter_mut().find(|p| p.id == id) {
+        p.x = x;
+        p.y = y;
+      } else {
+        c.pointers.push(Pointer { id, x, y });
       }
-      c.last_cursor = Some((x, y));
+      // Reset the pinch baseline; it's re-measured on the next two-finger move.
+      c.pinch_dist = None;
     });
   });
 
+  // A pointer moved: one pointer orbits, two pointers pinch-zoom.
+  add_listener::<PointerEvent, _>(target, "pointermove", |e| {
+    CAM_STATE.with(|c| {
+      let mut c = c.borrow_mut();
+      let id = e.pointer_id();
+      let (x, y) = (e.client_x() as f64, e.client_y() as f64);
+
+      // Ignore moves for pointers we're not tracking (e.g. hover with no button down).
+      let Some(idx) = c.pointers.iter().position(|p| p.id == id) else {
+        return;
+      };
+      let (px, py) = (c.pointers[idx].x, c.pointers[idx].y);
+      c.pointers[idx].x = x;
+      c.pointers[idx].y = y;
+
+      match c.pointers.len() {
+        1 => {
+          // Single finger / mouse drag => orbit.
+          let dx = (x - px) as f32;
+          let dy = (y - py) as f32;
+          c.yaw -= dx * 0.01;
+          c.pitch = (c.pitch - dy * 0.01).clamp(-1.5, 1.5); // avoid flipping at the poles
+        }
+        2 => {
+          // Two fingers => pinch: compare the current finger spread to the last
+          // one and feed the change into the orbit radius (spread apart = zoom in).
+          let ax = c.pointers[0].x;
+          let ay = c.pointers[0].y;
+          let bx = c.pointers[1].x;
+          let by = c.pointers[1].y;
+          let dist = ((ax - bx).powi(2) + (ay - by).powi(2)).sqrt();
+          if let Some(prev) = c.pinch_dist {
+            let delta = (prev - dist) as f32;
+            c.radius = (c.radius + delta * 0.01).clamp(0.75, 50.0);
+          }
+          c.pinch_dist = Some(dist);
+        }
+        _ => {}
+      }
+    });
+  });
+
+  // A pointer was released or cancelled (finger lifted, gesture aborted): stop
+  // tracking it. `drop_pointer` is a plain fn, so it can be reused for both events.
+  add_listener::<PointerEvent, _>(target, "pointerup", drop_pointer);
+  add_listener::<PointerEvent, _>(target, "pointercancel", drop_pointer);
+
+  // Desktop mouse wheel still zooms directly.
   add_listener::<WheelEvent, _>(target, "wheel", |e| {
     e.prevent_default(); // stop the page scrolling
     CAM_STATE.with(|c| {
       let mut c = c.borrow_mut();
       c.radius = (c.radius + e.delta_y() as f32 * 0.0006).clamp(0.75, 50.0);
     });
+  });
+}
+
+// Remove a finished pointer from the tracked set and clear the pinch baseline so the
+// next two-finger gesture starts fresh. Used for both `pointerup` and `pointercancel`.
+fn drop_pointer(e: PointerEvent) {
+  CAM_STATE.with(|c| {
+    let mut c = c.borrow_mut();
+    c.pointers.retain(|p| p.id != e.pointer_id());
+    c.pinch_dist = None;
   });
 }
 

@@ -17,6 +17,9 @@
       canvas {
         display: block;
         background: #000;
+        /* Stop the browser turning touch drags/pinches on the canvas into
+           page scroll or zoom, so our pointer handlers get the raw gestures. */
+        touch-action: none;
         /* Canvas is square (1:1), so fit to whichever window dimension is
            smaller. This gives 100% height in landscape and 100% width in
            portrait, always covering as much as possible without clipping. */
