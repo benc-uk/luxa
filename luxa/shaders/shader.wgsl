@@ -7,6 +7,7 @@ struct VertexInput {
     @location(0) position: vec3f,
     @location(1) tex_coord: vec2f,
     @location(2) normal: vec3f,
+    @location(3) tangent: vec4f,
 };
 
 struct VertexOutput {
@@ -14,6 +15,7 @@ struct VertexOutput {
     @location(0) tex_coord: vec2f,
     @location(1) normal: vec3f,
     @location(2) world_pos: vec3f,
+    @location(3) tangent: vec4f,
 };
 
 struct ModelUniform {
@@ -113,6 +115,8 @@ fn vert_main(in: VertexInput) -> VertexOutput {
     out.tex_coord = in.tex_coord;
     out.normal = (model.normal_matrix * vec4(in.normal, 0.0)).xyz;
     out.world_pos = (model.model * vec4(in.position, 1.0)).xyz;
+    let t = (model.normal_matrix * vec4f(in.tangent.xyz, 0.0)).xyz;
+    out.tangent = vec4f(t, in.tangent.w);
 
     return out;
 }
@@ -132,7 +136,8 @@ fn frag_main(in: VertexOutput) -> @location(0) vec4f {
     let metallic = mr.x;
     let roughness = mr.y;
 
-    let N = normalize(in.normal);
+    let N = get_normal(in);
+
     let V = normalize(camera.pos - in.world_pos);
     let NdotV = max(dot(N, V), 1e-4);
     let F0 = mix(vec3f(0.04), albedo, metallic);
@@ -198,4 +203,28 @@ fn get_occlusion(uv: vec2f) -> f32 {
 fn get_emissive(uv: vec2f) -> vec3f {
     // emissive texture is sRGB, so the sample is already linear here
     return material.emissive_factor * textureSample(t_emissive, s_emissive, uv).rgb;
+}
+
+// ===== Other helpers =========================================
+
+fn get_normal(in: VertexOutput) -> vec3f {
+    let N = normalize(in.normal);
+
+    // Sample first
+    var n = textureSample(t_normal, s_normal, in.tex_coord).xyz * 2.0 - 1.0;
+
+    // Degenerate or missing tangent: fall back to the geometric normal.
+    if dot(in.tangent.xyz, in.tangent.xyz) < 1e-8 { return N; }
+
+    // Gram-Schmidt: re-orthogonalise T against N (interpolation skews it slightly).
+    let T = normalize(in.tangent.xyz - dot(in.tangent.xyz, N) * N);
+    // Bitangent from the cross product; tangent.w carries glTF handedness (+/-1).
+    let B = cross(N, T) * in.tangent.w;
+
+    let tbn = mat3x3f(T, B, N);
+
+    // normal_scale only affects the tangent-space XY, never Z.
+    n = vec3f(n.xy * material.normal_scale, n.z);
+
+    return normalize(tbn * n);
 }

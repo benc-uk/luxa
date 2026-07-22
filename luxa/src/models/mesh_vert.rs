@@ -13,10 +13,11 @@ pub struct Vertex {
   pub position: [f32; 3],
   pub tex_coord: [f32; 2],
   pub normal: [f32; 3],
+  pub tangent: [f32; 4],
 }
 
 impl Vertex {
-  const ATTRIBUTES: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x3];
+  const ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x3, 3 => Float32x4];
 
   // Get a description of the vertex buffer layout for this vertex type. This is used when creating the render pipeline.
   pub(crate) fn desc() -> wgpu::VertexBufferLayout<'static> {

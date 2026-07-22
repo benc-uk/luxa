@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result, bail};
-use glam::{Mat3, Mat4, Quat, Vec3};
+use glam::{Mat3, Mat4, Quat, Vec2, Vec3};
 use image::{DynamicImage, ImageBuffer, Luma, LumaA, Rgb, Rgba};
 
 use crate::{
@@ -360,14 +360,27 @@ fn parse_primitive(primitive: gltf::Primitive<'_>, transform: Mat4, buffers: &[g
     None => vec![[0.0, 0.0]; positions.len()],
   };
 
+  let tangents = match reader.read_tangents() {
+    Some(tangents) => {
+      let tangents = tangents.map(|tangent| tangent.into()).collect::<Vec<_>>();
+      if tangents.len() != positions.len() {
+        bail!("TANGENT attribute has {} values but POSITION has {}", tangents.len(), positions.len());
+      }
+      tangents
+    }
+    None => generate_tangents(&positions, &normals, &tex_coords, &indices),
+  };
+
   let vertices = positions
     .into_iter()
     .zip(normals)
     .zip(tex_coords)
-    .map(|((position, normal), tex_coord)| Vertex {
+    .zip(tangents)
+    .map(|(((position, normal), tex_coord), tangent)| Vertex {
       position: position.to_array(),
       tex_coord,
       normal: normal.to_array(),
+      tangent,
     })
     .collect();
 
@@ -396,4 +409,59 @@ fn generate_normals(positions: &[Vec3], indices: &[u16]) -> Vec<Vec3> {
   }
 
   normals
+}
+
+// Generates per-vertex tangents (Lengyel's method) when the glTF primitive omits them.
+// For each triangle we solve for the tangent/bitangent that map the UV gradients onto the
+// position gradients, accumulate them per vertex, then orthonormalise against the normal.
+// The returned `w` is the glTF handedness sign so the shader can reconstruct the bitangent
+// as cross(N, T) * w. Vertices with no usable UV gradient get a zero tangent, which the
+// shader treats as "fall back to the geometric normal".
+fn generate_tangents(positions: &[Vec3], normals: &[Vec3], tex_coords: &[[f32; 2]], indices: &[u16]) -> Vec<[f32; 4]> {
+  let mut tan_accum = vec![Vec3::ZERO; positions.len()];
+  let mut bitan_accum = vec![Vec3::ZERO; positions.len()];
+
+  for triangle in indices.chunks_exact(3) {
+    let i0 = usize::from(triangle[0]);
+    let i1 = usize::from(triangle[1]);
+    let i2 = usize::from(triangle[2]);
+
+    let edge1 = positions[i1] - positions[i0];
+    let edge2 = positions[i2] - positions[i0];
+
+    let delta_uv1 = Vec2::from(tex_coords[i1]) - Vec2::from(tex_coords[i0]);
+    let delta_uv2 = Vec2::from(tex_coords[i2]) - Vec2::from(tex_coords[i0]);
+
+    // Determinant of the 2x2 UV matrix. Zero means degenerate UVs (no gradient), so skip.
+    let denom = delta_uv1.x * delta_uv2.y - delta_uv2.x * delta_uv1.y;
+    if denom.abs() <= f32::EPSILON {
+      continue;
+    }
+    let r = 1.0 / denom;
+
+    let tangent = (edge1 * delta_uv2.y - edge2 * delta_uv1.y) * r;
+    let bitangent = (edge2 * delta_uv1.x - edge1 * delta_uv2.x) * r;
+
+    for &index in &[i0, i1, i2] {
+      tan_accum[index] += tangent;
+      bitan_accum[index] += bitangent;
+    }
+  }
+
+  tan_accum
+    .iter()
+    .zip(normals)
+    .zip(&bitan_accum)
+    .map(|((tangent, normal), bitangent)| {
+      // Gram-Schmidt: project the accumulated tangent onto the plane perpendicular to N.
+      let ortho = (*tangent - *normal * normal.dot(*tangent)).normalize_or_zero();
+      if ortho == Vec3::ZERO {
+        // No usable UV gradient reached this vertex; leave zero for the shader to detect.
+        return [0.0, 0.0, 0.0, 1.0];
+      }
+      // Handedness: does the accumulated bitangent agree with N x T, or is it mirrored?
+      let w = if normal.cross(ortho).dot(*bitangent) < 0.0 { 1.0 } else { -1.0 };
+      [ortho.x, ortho.y, ortho.z, w]
+    })
+    .collect()
 }

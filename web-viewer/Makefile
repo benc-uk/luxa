@@ -24,3 +24,4 @@ clippy:
 clean:
 	cargo clean
 	rm -rf pkg
+	rm -rf dist

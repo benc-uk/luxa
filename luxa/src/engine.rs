@@ -145,7 +145,7 @@ impl Engine {
       }],
     });
 
-    // Step 5 - Create the shaders & render pipeline
+    // Step 5 - Create the shaders & render pipelines
     let target_format = surf_config.format.add_srgb_suffix(); // add_srgb_suffix is v important, otherwise it will not work on some platforms like web
     let pipelines = Pipelines::new(
       &device,

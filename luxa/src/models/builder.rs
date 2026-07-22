@@ -10,126 +10,150 @@ pub(crate) fn primitive_cube() -> (Vec<Vertex>, Vec<u16>) {
       position: [-0.5, -0.5, 0.5],
       tex_coord: [0.0, 1.0],
       normal: [0.0, 0.0, 1.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
     },
     Vertex {
       position: [0.5, -0.5, 0.5],
       tex_coord: [1.0, 1.0],
       normal: [0.0, 0.0, 1.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
     },
     Vertex {
       position: [0.5, 0.5, 0.5],
       tex_coord: [1.0, 0.0],
       normal: [0.0, 0.0, 1.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
     },
     Vertex {
       position: [-0.5, 0.5, 0.5],
       tex_coord: [0.0, 0.0],
       normal: [0.0, 0.0, 1.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
     },
     // Back face (-z)
     Vertex {
       position: [0.5, -0.5, -0.5],
       tex_coord: [0.0, 1.0],
       normal: [0.0, 0.0, -1.0],
+      tangent: [-1.0, 0.0, 0.0, -1.0],
     },
     Vertex {
       position: [-0.5, -0.5, -0.5],
       tex_coord: [1.0, 1.0],
       normal: [0.0, 0.0, -1.0],
+      tangent: [-1.0, 0.0, 0.0, -1.0],
     },
     Vertex {
       position: [-0.5, 0.5, -0.5],
       tex_coord: [1.0, 0.0],
       normal: [0.0, 0.0, -1.0],
+      tangent: [-1.0, 0.0, 0.0, -1.0],
     },
     Vertex {
       position: [0.5, 0.5, -0.5],
       tex_coord: [0.0, 0.0],
       normal: [0.0, 0.0, -1.0],
+      tangent: [-1.0, 0.0, 0.0, -1.0],
     },
     // Right face (+x)
     Vertex {
       position: [0.5, -0.5, 0.5],
       tex_coord: [0.0, 1.0],
       normal: [1.0, 0.0, 0.0],
+      tangent: [0.0, 0.0, -1.0, -1.0],
     },
     Vertex {
       position: [0.5, -0.5, -0.5],
       tex_coord: [1.0, 1.0],
       normal: [1.0, 0.0, 0.0],
+      tangent: [0.0, 0.0, -1.0, -1.0],
     },
     Vertex {
       position: [0.5, 0.5, -0.5],
       tex_coord: [1.0, 0.0],
       normal: [1.0, 0.0, 0.0],
+      tangent: [0.0, 0.0, -1.0, -1.0],
     },
     Vertex {
       position: [0.5, 0.5, 0.5],
       tex_coord: [0.0, 0.0],
       normal: [1.0, 0.0, 0.0],
+      tangent: [0.0, 0.0, -1.0, -1.0],
     },
     // Left face (-x)
     Vertex {
       position: [-0.5, -0.5, -0.5],
       tex_coord: [0.0, 1.0],
       normal: [-1.0, 0.0, 0.0],
+      tangent: [0.0, 0.0, 1.0, -1.0],
     },
     Vertex {
       position: [-0.5, -0.5, 0.5],
       tex_coord: [1.0, 1.0],
       normal: [-1.0, 0.0, 0.0],
+      tangent: [0.0, 0.0, 1.0, -1.0],
     },
     Vertex {
       position: [-0.5, 0.5, 0.5],
       tex_coord: [1.0, 0.0],
       normal: [-1.0, 0.0, 0.0],
+      tangent: [0.0, 0.0, 1.0, -1.0],
     },
     Vertex {
       position: [-0.5, 0.5, -0.5],
       tex_coord: [0.0, 0.0],
       normal: [-1.0, 0.0, 0.0],
+      tangent: [0.0, 0.0, 1.0, -1.0],
     },
     // Top face (+y)
     Vertex {
       position: [-0.5, 0.5, 0.5],
       tex_coord: [0.0, 1.0],
       normal: [0.0, 1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
     },
     Vertex {
       position: [0.5, 0.5, 0.5],
       tex_coord: [1.0, 1.0],
       normal: [0.0, 1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
     },
     Vertex {
       position: [0.5, 0.5, -0.5],
       tex_coord: [1.0, 0.0],
       normal: [0.0, 1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
     },
     Vertex {
       position: [-0.5, 0.5, -0.5],
       tex_coord: [0.0, 0.0],
       normal: [0.0, 1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
     },
     // Bottom face (-y)
     Vertex {
       position: [-0.5, -0.5, -0.5],
       tex_coord: [0.0, 1.0],
       normal: [0.0, -1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
     },
     Vertex {
       position: [0.5, -0.5, -0.5],
       tex_coord: [1.0, 1.0],
       normal: [0.0, -1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
     },
     Vertex {
       position: [0.5, -0.5, 0.5],
       tex_coord: [1.0, 0.0],
       normal: [0.0, -1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
     },
     Vertex {
       position: [-0.5, -0.5, 0.5],
       tex_coord: [0.0, 0.0],
       normal: [0.0, -1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
     },
   ];
 
@@ -172,10 +196,13 @@ pub(crate) fn primitive_sphere(slices: u32, stacks: u32) -> (Vec<Vertex>, Vec<u1
       let ny = cos_phi;
       let nz = sin_phi * sin_theta;
 
+      // Tangent points along increasing longitude (theta); w = +1 handedness so the
+      // bitangent from cross(N, T) * w runs along increasing latitude (v).
       vertices.push(Vertex {
         position: [nx * radius, ny * radius, nz * radius],
         tex_coord: [j as f32 / slices as f32, i as f32 / stacks as f32],
         normal: [nx, ny, nz],
+        tangent: [-sin_theta, 0.0, cos_theta, 1.0],
       });
     }
   }

@@ -281,13 +281,10 @@ Deliberately last because it needs mesh and parser changes.
 
 ## Phase 5 (optional, later) - IBL
 
-Only once analytic lighting is solid. Replace the flat ambient with image-based
-lighting:
-
-1. Load an HDR equirectangular, convert to a cubemap.
-2. Prefilter: irradiance cubemap (diffuse) + roughness-mipped specular cubemap.
-3. Generate the BRDF integration LUT.
-4. Swap the constant ambient for the split-sum IBL term.
+Image-based lighting: replace the flat `AMBIENT_COLOR` with light gathered from an
+environment map (split-sum approximation, glTF style). This phase is large enough to
+live in its own document, see `IBL.md`. Only start it once the analytic lighting from
+Phases 1 to 4 is solid.
 
 ## Recommended coding order
 
