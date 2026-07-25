@@ -9,6 +9,8 @@ pub(crate) struct BindGroupLayouts {
   pub(crate) material: wgpu::BindGroupLayout,
   pub(crate) node: wgpu::BindGroupLayout,
   pub(crate) lights: wgpu::BindGroupLayout,
+  pub(crate) sky: wgpu::BindGroupLayout,
+  pub(crate) env: wgpu::BindGroupLayout,
 }
 
 impl Engine {
@@ -71,7 +73,9 @@ impl Engine {
         if let Some(vp) = node.view_proj(self.aspect) {
           self.camera_uniform.view_proj = vp.to_cols_array();
           self.camera_uniform.pos = node.world_position().to_array();
+          self.camera_uniform.inv_view_proj = vp.inverse().to_cols_array();
           self.queue.write_buffer(&self.camera_uniform_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+
           camera_found = true;
         }
       }
@@ -160,6 +164,8 @@ impl Engine {
         }
       }
 
+      self.skybox.render(&mut render_pass, &self.env_bind_group, &self.frame_cam_bind_group);
+
       // 🔥 TODO: Sort blended meshes by depth from camera, so they are drawn back to front. This is important for correct alpha blending.
 
       // Render all blended meshes after all opaque meshes, so they are drawn on top of the opaque ones.
@@ -211,6 +217,16 @@ impl Engine {
       lights: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("Lights Bind Group Layout"),
         entries: &[helpers::uniform_entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT)],
+      }),
+
+      sky: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Sky Bind Group Layout"),
+        entries: &[helpers::uniform_entry(0, wgpu::ShaderStages::FRAGMENT)],
+      }),
+
+      env: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Environment Bind Group Layout"),
+        entries: &[helpers::texture_cube_entry(0), helpers::sampler_entry(1)],
       }),
     }
   }

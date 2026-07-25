@@ -3,12 +3,13 @@ mod lighting;
 mod pipelines;
 mod render;
 mod resources;
+mod skybox;
 
 use glam::Mat4;
 use slotmap::SlotMap;
 use web_time::Instant;
 
-use crate::models::{Material, MaterialFallbacks, Mesh, Texture, Vertex};
+use crate::models::{self, Material, MaterialFallbacks, Mesh, Texture, Vertex};
 use crate::nodes::Node3D;
 use gpu::{create_depth_texture, init};
 pub(crate) use lighting::LightsUniform;
@@ -34,8 +35,9 @@ impl FrameUniform {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct CameraUniform {
   view_proj: [f32; 16],
+  inv_view_proj: [f32; 16],
   pos: [f32; 3],
-  _padding: f32, // pad to 16 bytes for alignment
+  _padding: f32,
 }
 
 impl CameraUniform {
@@ -43,13 +45,14 @@ impl CameraUniform {
     Self {
       view_proj: Mat4::IDENTITY.to_cols_array(),
       pos: [0.0, 0.0, 0.0],
+      inv_view_proj: Mat4::IDENTITY.to_cols_array(),
       _padding: 0.0,
     }
   }
 }
 
-const PBR: &str = include_str!("../shaders/pbr.wgsl");
-const MAIN: &str = include_str!("../shaders/shader.wgsl");
+const SHADER_PBR: &str = include_str!("../shaders/pbr.wgsl");
+const SHADER_MAIN: &str = include_str!("../shaders/shader.wgsl");
 
 pub struct Engine {
   surface: wgpu::Surface<'static>,
@@ -78,6 +81,11 @@ pub struct Engine {
   lights_uniform: LightsUniform,
   lights_uniform_buffer: wgpu::Buffer,
   lights_bind_group: wgpu::BindGroup,
+
+  // Env map bind group for skybox rendering
+  envmap: models::Cubemap,
+  env_bind_group: wgpu::BindGroup,
+  skybox: skybox::Skybox,
 
   // Arenas for storing resources, so we can return handles to them.
   scenes: SlotMap<SceneHandle, Node3DHandle>,
@@ -145,11 +153,28 @@ impl Engine {
       }],
     });
 
-    // Step 5 - Create the shaders & render pipelines
+    // Step 5 - Environment map for IBL and skybox rendering.
+    let env = models::Cubemap::new_render_target(&device, 1024, 1, surf_config.format, "Env Cube");
+    let env_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+      label: Some("Env Cube Bind Group"),
+      layout: &bind_group_layouts.env,
+      entries: &[
+        wgpu::BindGroupEntry {
+          binding: 0,
+          resource: wgpu::BindingResource::TextureView(&env.view),
+        },
+        wgpu::BindGroupEntry {
+          binding: 1,
+          resource: wgpu::BindingResource::Sampler(&env.sampler),
+        },
+      ],
+    });
+
+    // Step 6 - Create the shaders & render pipelines
     let target_format = surf_config.format.add_srgb_suffix(); // add_srgb_suffix is v important, otherwise it will not work on some platforms like web
     let pipelines = Pipelines::new(
       &device,
-      format!("{}\n{}", PBR, MAIN).as_str(),
+      format!("{}\n{}", SHADER_PBR, SHADER_MAIN).as_str(),
       target_format,
       &[Vertex::desc()],
       &[
@@ -160,14 +185,17 @@ impl Engine {
       ],
     );
 
-    // Step 6 - Create a depth texture for Z-buffering 3D scenes, and a view for it
+    // Step 7 - Create a depth texture for Z-buffering 3D scenes, and a view for it
     let (_depth_texture, depth_texture_view) = create_depth_texture(&device, &surf_config);
 
-    // Step 7 - Create a default texture and material
+    // Step 8 - Create a default texture and material
     let mut textures = SlotMap::with_key();
     let mut materials = SlotMap::with_key();
     let material_fallbacks = MaterialFallbacks::new(&device, &queue, &mut textures)?;
     let default_material = materials.insert(Material::new(&device, &bind_group_layouts.material, &material_fallbacks, &textures));
+
+    // Step 9 - Create the skybox renderer
+    let skybox = skybox::Skybox::new(&device, &bind_group_layouts, target_format);
 
     log::info!("Luxa engine created successfully");
 
@@ -197,6 +225,11 @@ impl Engine {
       lights_uniform_buffer,
       lights_bind_group,
 
+      // Env map stuff
+      envmap: env,
+      env_bind_group,
+      skybox,
+
       nodes: SlotMap::with_key(),
       scenes: SlotMap::with_key(),
       meshes: SlotMap::with_key(),
@@ -216,5 +249,9 @@ impl Engine {
 
   pub fn default_material(&self) -> MaterialHandle {
     self.default_material
+  }
+
+  pub fn set_environment_debug(&mut self) {
+    skybox::fill_faces(&self.device, &self.queue, &self.envmap);
   }
 }

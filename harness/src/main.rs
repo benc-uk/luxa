@@ -81,10 +81,10 @@ impl ApplicationHandler for App {
     self.radius = 3.0;
 
     let node = engine.create_node(root, vec3(0.0, 0.0, 0.0), Quat::IDENTITY, vec3(1.0, 1.0, 1.0));
-    let pot = engine.load_gltf("./assets/khronos/pot_of_coals.glb", node).expect("failed to load gltf");
+    let pot = engine.load_gltf("./assets/models/PotOfCoals.glb", node).expect("failed to load gltf");
     engine.node_mut(pot).set_position(vec3(0.0, 0.0, 0.0));
     engine.node_mut(pot).set_scale(vec3(20.0, 20.0, 20.0));
-    let cube = engine.load_gltf("./assets/khronos/cube/Cube.gltf", node).expect("failed to load gltf");
+    let cube = engine.load_gltf("./assets/models/Cube.glb", node).expect("failed to load gltf");
     engine.node_mut(cube).set_scale(vec3(1.0, 1.0, 1.0));
     engine.node_mut(cube).set_position(vec3(0.0, -1.0, 0.0));
 

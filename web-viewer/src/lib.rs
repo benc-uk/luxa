@@ -96,6 +96,8 @@ fn build_scene(model: Vec<u8>) {
     if let Some(engine) = cell.borrow_mut().as_mut() {
       let (scene, root) = engine.create_scene();
 
+      engine.set_environment_debug();
+
       engine.create_light_node(root, vec3(5.3, 3.2, -3.5), vec3(1.0, 1.0, 1.0), 15.0);
       engine.create_light_node(root, vec3(-7.0, 2.0, 1.0), vec3(1.0, 0.3, 0.1), 15.0);
       engine.create_light_node(root, vec3(3.0, 5.0, 4.0), vec3(0.1, 0.8, 0.3), 15.0);

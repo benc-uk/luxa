@@ -25,6 +25,7 @@ struct ModelUniform {
 
 struct CameraUniform {
     view_proj: mat4x4f,
+    inv_view_proj: mat4x4f,
     pos: vec3f,
 };
 
