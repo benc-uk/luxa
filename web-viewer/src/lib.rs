@@ -41,7 +41,9 @@ thread_local! {
   });
 }
 
-const DEFAULT_MODEL: &str = "DamagedHelmet.glb";
+// Full relative path matching the <select> option values, so the no-hash first
+// load fetches a real file under both / and /luxa/ deploys.
+const DEFAULT_MODEL: &str = "assets/models/khronos/DamagedHelmet.glb";
 
 // Marks this as the module's entry point
 #[wasm_bindgen(start)]
@@ -71,7 +73,9 @@ pub fn start() -> Result<(), JsValue> {
     }
 
     let model_bytes = fetch_bytes(model_from_hash().as_str()).await.expect("failed to fetch model");
-    let hdr_bytes = fetch_bytes("/assets/ibl/colorful_studio_4k.hdr").await.expect("failed to fetch HDR");
+    // Relative path (no leading slash) so it resolves against the page directory,
+    // which works both locally (served at /) and on Pages (served at /luxa/).
+    let hdr_bytes = fetch_bytes("assets/ibl/colorful_studio_4k.hdr").await.expect("failed to fetch HDR");
 
     build_scene(model_bytes, hdr_bytes);
 

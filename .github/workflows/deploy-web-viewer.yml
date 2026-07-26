@@ -4,9 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      - "web-viewer/**"
-      - "luxa/**"
-      - ".github/workflows/deploy-web-viewer.yml"
+      - 'web-viewer/**'
+      - 'luxa/**'
+      - '.github/workflows/deploy-web-viewer.yml'
   workflow_dispatch:
 
 # Allow the GITHUB_TOKEN to deploy to Pages.
@@ -52,6 +52,14 @@ jobs:
 
       - name: Build wasm (release)
         run: wasm-pack build --target web --release
+
+      - name: Materialise shared assets
+        # public/assets is a git-tracked symlink to the repo-root assets/ dir,
+        # which is convenient for local dev but fragile in CI. Replace it with a
+        # real copy so the Vite bundle never depends on symlink dereferencing.
+        run: |
+          rm -f public/assets
+          cp -r ../assets public/assets
 
       - name: Bundle with Vite
         # base must match the GitHub Pages sub-path for this project site:
