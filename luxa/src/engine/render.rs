@@ -9,7 +9,6 @@ pub(crate) struct BindGroupLayouts {
   pub(crate) material: wgpu::BindGroupLayout,
   pub(crate) node: wgpu::BindGroupLayout,
   pub(crate) lights: wgpu::BindGroupLayout,
-  pub(crate) sky: wgpu::BindGroupLayout,
   pub(crate) env: wgpu::BindGroupLayout,
 }
 
@@ -164,7 +163,9 @@ impl Engine {
         }
       }
 
-      self.skybox.render(&mut render_pass, &self.env_bind_group, &self.frame_cam_bind_group);
+      // Renderer irriadiance or skybox cube as a skybox
+      //self.skybox.render(&mut render_pass, &self.ibl.irradiance_bind_group, &self.frame_cam_bind_group);
+      self.skybox.render(&mut render_pass, &self.ibl.env_bind_group, &self.frame_cam_bind_group);
 
       // 🔥 TODO: Sort blended meshes by depth from camera, so they are drawn back to front. This is important for correct alpha blending.
 
@@ -217,11 +218,6 @@ impl Engine {
       lights: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("Lights Bind Group Layout"),
         entries: &[helpers::uniform_entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT)],
-      }),
-
-      sky: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("Sky Bind Group Layout"),
-        entries: &[helpers::uniform_entry(0, wgpu::ShaderStages::FRAGMENT)],
       }),
 
       env: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

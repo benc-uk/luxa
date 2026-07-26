@@ -1,4 +1,5 @@
 mod gpu;
+mod ibl;
 mod lighting;
 mod pipelines;
 mod render;
@@ -9,9 +10,10 @@ use glam::Mat4;
 use slotmap::SlotMap;
 use web_time::Instant;
 
-use crate::models::{self, Material, MaterialFallbacks, Mesh, Texture, Vertex};
+use crate::models::{Material, MaterialFallbacks, Mesh, Texture, Vertex};
 use crate::nodes::Node3D;
 use gpu::{create_depth_texture, init};
+use ibl::Ibl;
 pub(crate) use lighting::LightsUniform;
 
 use pipelines::Pipelines;
@@ -83,8 +85,7 @@ pub struct Engine {
   lights_bind_group: wgpu::BindGroup,
 
   // Env map bind group for skybox rendering
-  envmap: models::Cubemap,
-  env_bind_group: wgpu::BindGroup,
+  ibl: Ibl,
   skybox: skybox::Skybox,
 
   // Arenas for storing resources, so we can return handles to them.
@@ -154,21 +155,14 @@ impl Engine {
     });
 
     // Step 5 - Environment map for IBL and skybox rendering.
-    let env = models::Cubemap::new_render_target(&device, 1024, 1, surf_config.format, "Env Cube");
-    let env_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-      label: Some("Env Cube Bind Group"),
-      layout: &bind_group_layouts.env,
-      entries: &[
-        wgpu::BindGroupEntry {
-          binding: 0,
-          resource: wgpu::BindingResource::TextureView(&env.view),
-        },
-        wgpu::BindGroupEntry {
-          binding: 1,
-          resource: wgpu::BindingResource::Sampler(&env.sampler),
-        },
-      ],
-    });
+    let colour = wgpu::Color {
+      r: 0.03,
+      g: 0.03,
+      b: 0.03,
+      a: 1.0,
+    };
+    // let ibl = Ibl::new_solid_color(&device, &queue, &bind_group_layouts, colour)?;
+    let ibl = Ibl::new_debug(&device, &queue, &bind_group_layouts)?;
 
     // Step 6 - Create the shaders & render pipelines
     let target_format = surf_config.format.add_srgb_suffix(); // add_srgb_suffix is v important, otherwise it will not work on some platforms like web
@@ -226,8 +220,7 @@ impl Engine {
       lights_bind_group,
 
       // Env map stuff
-      envmap: env,
-      env_bind_group,
+      ibl,
       skybox,
 
       nodes: SlotMap::with_key(),
@@ -251,7 +244,8 @@ impl Engine {
     self.default_material
   }
 
-  pub fn set_environment_debug(&mut self) {
-    skybox::fill_faces(&self.device, &self.queue, &self.envmap);
+  pub fn set_environment(&mut self, hdr_bytes: &[u8]) -> anyhow::Result<()> {
+    self.ibl = Ibl::new(&self.device, &self.queue, hdr_bytes, &self.bind_group_layouts)?;
+    Ok(())
   }
 }

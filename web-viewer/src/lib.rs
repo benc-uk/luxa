@@ -63,18 +63,17 @@ pub fn start() -> Result<(), JsValue> {
     setup_input(&canvas);
 
     match Engine::new_from_canvas(canvas, size).await {
-      Ok(engine) => {
-        log::info!("engine init succeeded");
+      Ok(mut engine) => {
         ENGINE.with(|cell| *cell.borrow_mut() = Some(engine));
       }
 
       Err(e) => log::error!("engine init failed: {e:#}"),
     }
 
-    match fetch_bytes(&format!("models/{}", model_from_hash())).await {
-      Ok(bytes) => build_scene(bytes),
-      Err(e) => log::error!("{e:#}"),
-    }
+    let model_bytes = fetch_bytes(model_from_hash().as_str()).await.expect("failed to fetch model");
+    let hdr_bytes = fetch_bytes("/assets/ibl/colorful_studio_4k.hdr").await.expect("failed to fetch HDR");
+
+    build_scene(model_bytes, hdr_bytes);
 
     start_render_loop();
   });
@@ -90,18 +89,18 @@ fn model_from_hash() -> String {
   if name.is_empty() { DEFAULT_MODEL.to_string() } else { name.to_string() }
 }
 
-// Build the scene with the given models, and create a camera node. The camera node is stored in a thread-local so it can be updated each frame.
-fn build_scene(model: Vec<u8>) {
+// Build the scene with the given model & HDR environment, and create a camera node.
+// The camera node is stored in a thread-local so it can be updated each frame.
+fn build_scene(model: Vec<u8>, hdr: Vec<u8>) {
   ENGINE.with(|cell| {
     if let Some(engine) = cell.borrow_mut().as_mut() {
       let (scene, root) = engine.create_scene();
-
-      engine.set_environment_debug();
 
       engine.create_light_node(root, vec3(5.3, 3.2, -3.5), vec3(1.0, 1.0, 1.0), 15.0);
       engine.create_light_node(root, vec3(-7.0, 2.0, 1.0), vec3(1.0, 0.3, 0.1), 15.0);
       engine.create_light_node(root, vec3(3.0, 5.0, 4.0), vec3(0.1, 0.8, 0.3), 15.0);
 
+      engine.set_environment(&hdr);
       let n = engine.load_gltf_bytes(&model, root).unwrap();
 
       // Get the node AABB size and use that to scale the model to 1,1,1
@@ -115,7 +114,7 @@ fn build_scene(model: Vec<u8>) {
       engine.node_mut(n).set_scale(scale);
       engine.node_mut(n).set_position(-scale * center);
 
-      let camera = engine.create_camera_node(root, vec3(0.0, 1.0, 4.0), vec3(0.0, 0.0, 0.0), glam::Vec3::ONE, 45.0, 0.1, 200.0);
+      let camera = engine.create_camera_node(root, vec3(0.0, 1.0, 4.0), vec3(0.0, 0.0, 0.0), glam::Vec3::ONE, 70.0, 0.1, 200.0);
       SCENE.with(|cell| cell.set(Some(scene)));
       CAMERA.with(|cell| cell.set(Some(camera)));
     }

@@ -13,11 +13,12 @@ slotmap = "1.1.1"
 web-time = "1.1.0"
 # Pin to v29 due to this bug https://github.com/gfx-rs/wgpu/issues/9855
 wgpu = "29.0"
+half = { version = "2.7.1", features = ["bytemuck"] }
 
 [dependencies.image]
 version = "0.24"
 default-features = false
-features = ["jpeg", "png"]
+features = ["jpeg", "png", "hdr"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11.11"

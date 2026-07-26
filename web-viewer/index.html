@@ -60,7 +60,7 @@
     </style>
 
     <script type="module">
-      import init from "./pkg/web_viewer.js";
+      import init from './pkg/web_viewer.js';
       init();
     </script>
   </head>
@@ -68,27 +68,24 @@
   <body>
     <canvas id="canvas" width="1440" height="1440"></canvas>
     <select id="model-select">
-      <option value="DamagedHelmet.glb">Scifi Helmet</option>
-      <option value="PotOfCoals.glb">Pot of Coals</option>
-      <option value="WaterBottle.glb">Water Bottle</option>
-      <option value="Duck.glb">Duck</option>
-      <option value="NormalTangentTest.glb">NormalTangentTest</option>
-      <option value="NormalTangentMirrorTest.glb">
-        NormalTangentMirrorTest
-      </option>
+      <option value="assets/models/khronos/DamagedHelmet.glb">Scifi Helmet</option>
+      <option value="assets/models/khronos/PotOfCoals.glb">Pot of Coals</option>
+      <option value="assets/models/khronos/WaterBottle.glb">Water Bottle</option>
+      <option value="assets/models/khronos/Duck.glb">Duck</option>
+      <option value="assets/models/polyhaven/brass_vase_03_2k.glb">Brass Vase</option>
     </select>
 
     <div id="loading">⏳ Loading model...</div>
 
     <script>
-      const select = document.getElementById("model-select");
+      const select = document.getElementById('model-select');
 
       // Reflect the current URL hash (e.g. #water_bottle.glb) in the picker on load.
-      const current = decodeURIComponent(location.hash.replace(/^#/, ""));
+      const current = decodeURIComponent(location.hash.replace(/^#/, ''));
       if (current) select.value = current;
 
       // Set the hash to the chosen model and reload so the wasm picks it up at startup.
-      select.addEventListener("change", () => {
+      select.addEventListener('change', () => {
         location.hash = select.value;
         location.reload();
       });
