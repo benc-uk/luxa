@@ -9,7 +9,8 @@ pub(crate) struct BindGroupLayouts {
   pub(crate) material: wgpu::BindGroupLayout,
   pub(crate) node: wgpu::BindGroupLayout,
   pub(crate) lights: wgpu::BindGroupLayout,
-  pub(crate) env: wgpu::BindGroupLayout,
+  pub(crate) env: wgpu::BindGroupLayout, // Note that this is not used in the main render pass, but is used in the IBL baking passes
+                                         //pub(crate) ibl: wgpu::BindGroupLayout, // Note that this is not used in the main render pass, but is used in the IBL baking passes
 }
 
 impl Engine {
@@ -142,6 +143,7 @@ impl Engine {
       let mut render_pass = gpu::create_render_pass(&mut encoder, &view, Some(&self.depth_texture_view));
       render_pass.set_bind_group(0, &self.frame_cam_bind_group, &[]);
       render_pass.set_bind_group(3, &self.lights_bind_group, &[]);
+      // render_pass.set_bind_group(4, &self.ibl.render_bind_group, &[]);
 
       // Place to store all blended meshes, which we will render after all opaque meshes
       let mut blended_meshes = vec![];
@@ -164,8 +166,9 @@ impl Engine {
       }
 
       // Renderer irriadiance or skybox cube as a skybox
-      //self.skybox.render(&mut render_pass, &self.ibl.irradiance_bind_group, &self.frame_cam_bind_group);
+      // self.skybox.render(&mut render_pass, &self.ibl.irradiance_bind_group, &self.frame_cam_bind_group);
       self.skybox.render(&mut render_pass, &self.ibl.env_bind_group, &self.frame_cam_bind_group);
+      //self.skybox.render(&mut render_pass, &self.ibl.prefilter_bind_group, &self.frame_cam_bind_group);
 
       // 🔥 TODO: Sort blended meshes by depth from camera, so they are drawn back to front. This is important for correct alpha blending.
 
@@ -217,7 +220,15 @@ impl Engine {
 
       lights: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("Lights Bind Group Layout"),
-        entries: &[helpers::uniform_entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT)],
+        entries: &[
+          helpers::uniform_entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT),
+          helpers::texture_cube_entry(1), // irradiance
+          helpers::sampler_entry(2),
+          helpers::texture_cube_entry(3), // prefilter
+          helpers::sampler_entry(4),
+          helpers::texture_entry(5), // brdf lut, not a cube
+          helpers::sampler_entry(6),
+        ],
       }),
 
       env: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

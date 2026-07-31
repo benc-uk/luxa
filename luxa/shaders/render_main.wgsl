@@ -1,7 +1,11 @@
-// ===== Data structures =====================================
+// ======================================================================================
+// Main core rendering shader for Luxa. 
+// This is a PBR shader that supports glTF 2.0 materials, IBL, and multiple lights.
+// ======================================================================================
 
-const AMBIENT_COLOR: vec3f = vec3f(0.05);
-const EXPOSURE: f32 = 1.5;
+const EXPOSURE: f32 = 1.0;
+const PREFILTER_MIP_COUNT: f32 = 5.0;
+const PI: f32 = 3.14159265359;
 
 struct VertexInput {
     @location(0) position: vec3f,
@@ -65,7 +69,6 @@ var<uniform> camera: CameraUniform;
 var<uniform> time: f32;
 
 // Material group: material and texture bindings
-// Material values
 @group(1) @binding(0)
 var<uniform> material: Material;
 
@@ -106,18 +109,32 @@ var<uniform> model: ModelUniform;
 @group(3) @binding(0)
 var<uniform> lights: Lights;
 
+// IBL group: irradiance, prefilter, and BRDF LUT
+@group(3) @binding(1)
+var t_irradiance: texture_cube<f32>;
+@group(3) @binding(2)
+var s_irradiance: sampler;
+@group(3) @binding(3)
+var t_prefilter: texture_cube<f32>;
+@group(3) @binding(4)
+var s_prefilter: sampler;
+@group(3) @binding(5)
+var t_brdf_lut: texture_2d<f32>;
+@group(3) @binding(6)
+var s_brdf_lut: sampler;
+
 // ===== Vertex shader ==========================================
 
 @vertex
 fn vert_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
-    out.clip_position = camera.view_proj * model.model * vec4(in.position, 1.0);
-    out.tex_coord = in.tex_coord;
-    out.normal = (model.normal_matrix * vec4(in.normal, 0.0)).xyz;
-    out.world_pos = (model.model * vec4(in.position, 1.0)).xyz;
-    let t = (model.normal_matrix * vec4f(in.tangent.xyz, 0.0)).xyz;
-    out.tangent = vec4f(t, in.tangent.w);
+    out.clip_position = camera.view_proj * model.model * vec4(in.position, 1.0); // Clip space position based on model and camera matrices.
+    out.tex_coord = in.tex_coord;                                   // Simple pass-through of texture coordinates.
+    out.normal = (model.normal_matrix * vec4f(in.normal, 0.0)).xyz; // Transform normal to world space using the inverse transpose of the model matrix (normal matrix).
+    out.world_pos = (model.model * vec4f(in.position, 1.0)).xyz;    // Transform position to world space using the model matrix.
+    let t = (model.normal_matrix * vec4f(in.tangent.xyz, 0.0)).xyz; // Transform tangent to world space using the normal matrix.
+    out.tangent = vec4f(t, in.tangent.w);                           // Preserve the handedness of the tangent vector (w component) while transforming the xyz components.
 
     return out;
 }
@@ -126,25 +143,29 @@ fn vert_main(in: VertexInput) -> VertexOutput {
 
 @fragment
 fn frag_main(in: VertexOutput) -> @location(0) vec4f {
+    // Start by sampling the material albedo texture kinda the base color
     let albedo_rgba = get_albedo(in.tex_coord);
     let albedo = albedo_rgba.rgb;
 
+    // Handle alpha modes mask, discard fragments below the alpha cutoff threshold.
     if material.alpha_mode == 1u && albedo_rgba.a < material.alpha_cutoff {
         discard;
     }
 
+    // PBR starts here: get metallic and roughness values from the packed texture.
     let mr = get_metallic_roughness(in.tex_coord);
     let metallic = mr.x;
     let roughness = mr.y;
 
+    // Some vectors needed for all lighting calcs
     let N = get_normal(in);
-
     let V = normalize(camera.pos - in.world_pos);
     let NdotV = max(dot(N, V), 1e-4);
     let F0 = mix(vec3f(0.04), albedo, metallic);
 
     var light_accum: vec3f = vec3f(0.0, 0.0, 0.0);
 
+    // Handle classic point lights in the scene
     for (var i = 0u; i < lights.count; i = i + 1u) {
         let light = lights.lights[i];
         let L = normalize(light.position - in.world_pos);   // point light
@@ -170,12 +191,29 @@ fn frag_main(in: VertexOutput) -> @location(0) vec4f {
         light_accum = light_accum + lo;
     }
 
+    // Ambient occlusion ---
     let ao = get_occlusion(in.tex_coord);
-    let ambient = AMBIENT_COLOR * albedo * ao;
 
-    var hdr = ambient + light_accum;
-    hdr += get_emissive(in.tex_coord);
-    let tone_mapped = tonemap_aces(hdr * EXPOSURE);
+    // --- Split-sum IBL ambient (replaces flat AMBIENT_COLOR) ---
+    let F_amb = fresnel_schlick_roughness(NdotV, F0, roughness);
+    let kd = (vec3f(1.0) - F_amb) * (1.0 - metallic);
+
+    // Diffuse: irradiance in the surface-normal direction, tinted by albedo.
+    let irradiance = textureSample(t_irradiance, s_irradiance, N).rgb;
+    let diffuse = irradiance * albedo;
+
+    // Specular: prefiltered radiance along the reflection vector, at a mip chosen by
+    // roughness, combined with the pre-integrated BRDF (scale, bias) from the LUT.
+    let R = reflect(-V, N);
+    let prefiltered = textureSampleLevel(t_prefilter, s_prefilter, R, roughness * (PREFILTER_MIP_COUNT - 1.0)).rgb;
+    let brdf = textureSample(t_brdf_lut, s_brdf_lut, vec2f(NdotV, roughness)).rg;
+    let specular = prefiltered * (F0 * brdf.x + brdf.y);
+
+    var light_final = ((kd * diffuse + specular) * ao) + light_accum;
+    light_final = light_final + get_emissive(in.tex_coord);
+
+    let tone_mapped = tonemap_aces(light_final * EXPOSURE);
+
     return vec4f(tone_mapped, albedo_rgba.a);
 }
 
@@ -228,4 +266,45 @@ fn get_normal(in: VertexOutput) -> vec3f {
     n = vec3f(n.xy * material.normal_scale, n.z);
 
     return normalize(tbn * n);
+}
+
+// ===== PBR math helpers =========================================
+
+// GGX / Trowbridge-Reitz normal distribution.
+fn distribution_ggx(n_dot_h: f32, roughness: f32) -> f32 {
+    let a = roughness * roughness;      // perceptual -> linear roughness
+    let a2 = a * a;
+    let d = n_dot_h * n_dot_h * (a2 - 1.0) + 1.0;
+    return a2 / (PI * d * d);
+}
+
+// Smith geometry term using Schlick-GGX, direct-lighting k remap.
+fn geometry_schlick_ggx(n_dot_x: f32, roughness: f32) -> f32 {
+    let r = roughness + 1.0;
+    let k = (r * r) / 8.0;               // direct lighting variant
+    return n_dot_x / (n_dot_x * (1.0 - k) + k);
+}
+
+fn geometry_smith(n_dot_v: f32, n_dot_l: f32, roughness: f32) -> f32 {
+    return geometry_schlick_ggx(n_dot_v, roughness) * geometry_schlick_ggx(n_dot_l, roughness);
+}
+
+// Fresnel-Schlick.
+fn fresnel_schlick(cos_theta: f32, f0: vec3f) -> vec3f {
+    return f0 + (vec3f(1.0) - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+// ACES filmic approximation (Narkowicz). Input & output linear.
+fn tonemap_aces(x: vec3f) -> vec3f {
+    let a = 2.51;
+    let b = 0.03;
+    let c = 2.43;
+    let d = 0.59;
+    let e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3f(0.0), vec3f(1.0));
+}
+
+fn fresnel_schlick_roughness(cos_theta: f32, f0: vec3f, roughness: f32) -> vec3f {
+    let f90 = max(vec3f(1.0 - roughness), f0);
+    return f0 + (f90 - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
 }

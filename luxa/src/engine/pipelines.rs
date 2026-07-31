@@ -94,6 +94,32 @@ pub(crate) fn create_pipeline(
   cull_mode: Option<wgpu::Face>,
   blend: Option<wgpu::BlendState>,
 ) -> wgpu::RenderPipeline {
+  create_pipeline_with_entry_points(
+    device,
+    shader_module,
+    "vert_main",
+    "frag_main",
+    target_format,
+    vertex_layouts,
+    bind_group_layouts,
+    enable_depth,
+    cull_mode,
+    blend,
+  )
+}
+
+pub(crate) fn create_pipeline_with_entry_points(
+  device: &wgpu::Device,
+  shader_module: &wgpu::ShaderModule,
+  vertex_entry_point: &str,
+  fragment_entry_point: &str,
+  target_format: wgpu::TextureFormat,
+  vertex_layouts: &[wgpu::VertexBufferLayout<'static>],
+  bind_group_layouts: &[Option<&wgpu::BindGroupLayout>],
+  enable_depth: bool,
+  cull_mode: Option<wgpu::Face>,
+  blend: Option<wgpu::BlendState>,
+) -> wgpu::RenderPipeline {
   let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
     label: Some("Render Pipeline Layout"),
     bind_group_layouts,
@@ -110,14 +136,14 @@ pub(crate) fn create_pipeline(
     layout: Some(&render_pipeline_layout),
     vertex: wgpu::VertexState {
       module: shader_module,
-      entry_point: Some("vert_main"), // Hard coded for now
+      entry_point: Some(vertex_entry_point),
       buffers: vertex_layouts,
       compilation_options: wgpu::PipelineCompilationOptions::default(),
     },
 
     fragment: Some(wgpu::FragmentState {
       module: shader_module,
-      entry_point: Some("frag_main"), // Hard coded for now
+      entry_point: Some(fragment_entry_point),
       targets: &[Some(wgpu::ColorTargetState {
         format: target_format,
         blend,

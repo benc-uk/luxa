@@ -100,9 +100,9 @@ fn build_scene(model: Vec<u8>, hdr: Vec<u8>) {
     if let Some(engine) = cell.borrow_mut().as_mut() {
       let (scene, root) = engine.create_scene();
 
-      engine.create_light_node(root, vec3(5.3, 3.2, -3.5), vec3(1.0, 1.0, 1.0), 15.0);
-      engine.create_light_node(root, vec3(-7.0, 2.0, 1.0), vec3(1.0, 0.3, 0.1), 15.0);
-      engine.create_light_node(root, vec3(3.0, 5.0, 4.0), vec3(0.1, 0.8, 0.3), 15.0);
+      // engine.create_light_node(root, vec3(5.3, 3.2, -3.5), vec3(1.0, 1.0, 1.0), 135.0);
+      // engine.create_light_node(root, vec3(-7.0, 2.0, 1.0), vec3(1.0, 0.3, 0.1), 45.0);
+      // engine.create_light_node(root, vec3(3.0, 5.0, 4.0), vec3(0.1, 0.8, 0.3), 15.0);
 
       engine.set_environment(&hdr);
       let n = engine.load_gltf_bytes(&model, root).unwrap();

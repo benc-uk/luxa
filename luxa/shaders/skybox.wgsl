@@ -1,6 +1,7 @@
 // ======================================================================================
 // Skybox: draws the environment cubemap behind the scene. No lighting, no PBR.
 // ======================================================================================
+const EXPOSURE: f32 = 1.0;
 
 struct CameraUniform {
     view_proj: mat4x4f,
@@ -34,5 +35,20 @@ fn frag_main(in: VertexOutput) -> @location(0) vec4f {
     let far = camera.inv_view_proj * vec4f(in.ndc, 1.0, 1.0);
     let world = far.xyz / far.w;
     let dir = normalize(world - camera.pos);
-    return vec4f(textureSample(t_env, s_env, dir).rgb, 1.0);
+
+    // Pin to mip 0: the env cube carries a mip chain
+    let env_sample = textureSampleLevel(t_env, s_env, dir, 0.0);
+
+    let tone_mapped = tonemap_aces(env_sample.rgb * EXPOSURE);
+    return vec4f(tone_mapped, 1.0);
+}
+
+// ACES filmic approximation (Narkowicz). Input & output linear.
+fn tonemap_aces(x: vec3f) -> vec3f {
+    let a = 2.51;
+    let b = 0.03;
+    let c = 2.43;
+    let d = 0.59;
+    let e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3f(0.0), vec3f(1.0));
 }

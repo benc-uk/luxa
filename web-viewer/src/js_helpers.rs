@@ -2,6 +2,7 @@ use gloo_net::http::Request;
 use wasm_bindgen::{JsCast, prelude::Closure};
 
 pub async fn fetch_bytes(url: &str) -> Result<Vec<u8>, gloo_net::Error> {
+  log::info!("Fetching file from {}", url);
   Request::get(url).send().await.expect("unable to load file").binary().await
 }
 
