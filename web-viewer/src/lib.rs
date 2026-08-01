@@ -32,18 +32,19 @@ thread_local! {
   static ENGINE: RefCell<Option<Engine>> = RefCell::new(None);
   static SCENE: Cell<Option<luxa::SceneHandle>> = Cell::new(None);
   static CAMERA: Cell<Option<luxa::Node3DHandle>> = Cell::new(None);
+  static ROOT_NODE : Cell<Option<luxa::Node3DHandle>> = Cell::new(None);
+  static MODEL_NODE : Cell<Option<luxa::Node3DHandle>> = Cell::new(None);
   static CAM_STATE: RefCell<CamState> = RefCell::new(CamState {
     yaw: 0.0,
     pitch: 0.0,
-    radius: 2.0,
+    radius: 1.6,
     pointers: Vec::new(),
     pinch_dist: None,
   });
 }
 
-// Full relative path matching the <select> option values, so the no-hash first
-// load fetches a real file under both / and /luxa/ deploys.
 const DEFAULT_MODEL: &str = "assets/models/khronos/DamagedHelmet.glb";
+const DEFAULT_ENVIRONMENT: &str = "assets/ibl/colorful_studio_4k.hdr";
 
 // Marks this as the module's entry point
 #[wasm_bindgen(start)]
@@ -72,65 +73,93 @@ pub fn start() -> Result<(), JsValue> {
       Err(e) => log::error!("engine init failed: {e:#}"),
     }
 
-    let model_bytes = fetch_bytes(model_from_hash().as_str()).await.expect("failed to fetch model");
-    // Relative path (no leading slash) so it resolves against the page directory,
-    // which works both locally (served at /) and on Pages (served at /luxa/).
-    let hdr_bytes = fetch_bytes("assets/ibl/colorful_studio_4k.hdr").await.expect("failed to fetch HDR");
+    build_scene();
+    load_model(DEFAULT_MODEL).await;
+    load_environment(DEFAULT_ENVIRONMENT).await;
 
-    build_scene(model_bytes, hdr_bytes);
-
+    set_message("");
     start_render_loop();
   });
 
   Ok(())
 }
 
-// Pick the model to load from the URL fragment, e.g. `.../index.html#water_bottle.glb`.
-// The hash is returned including its leading '#', so we strip it; an empty hash falls back to the default.
-fn model_from_hash() -> String {
-  let hash = web_sys::window().and_then(|w| w.location().hash().ok()).unwrap_or_default();
-  let name = hash.trim_start_matches('#');
-  if name.is_empty() { DEFAULT_MODEL.to_string() } else { name.to_string() }
+#[wasm_bindgen]
+pub async fn load_model(path: &str) {
+  set_message("🗿 Loading model...");
+  let model_bytes = fetch_bytes(path).await.expect("failed to fetch model");
+
+  ENGINE.with(|cell| {
+    if let Some(engine) = cell.borrow_mut().as_mut() {
+      let root = ROOT_NODE.with(|cell| cell.get());
+      if let Some(root) = root {
+        if let Some(model) = MODEL_NODE.with(|cell| cell.get()) {
+          engine.remove_node(model);
+        }
+
+        let model = engine.load_gltf_bytes(&model_bytes, root).unwrap();
+        MODEL_NODE.with(|cell| cell.set(Some(model)));
+
+        // Get the node AABB size and use that to scale the model to 1,1,1
+        let aabb = engine.node(model).aabb().unwrap();
+        let size = aabb.size();
+        let size_avg = (size.x + size.y + size.z) / 3.0;
+        let center = aabb.center();
+        let scale = glam::vec3(1.0 / size_avg, 1.0 / size_avg, 1.0 / size_avg);
+
+        // Move the model so that its center is at the origin, and scale it to fit in a 1x1x1 cube
+        engine.node_mut(model).set_scale(scale);
+        engine.node_mut(model).set_position(-scale * center);
+      }
+    }
+  });
+
+  set_message("");
+}
+
+#[wasm_bindgen]
+pub async fn load_environment(path: &str) {
+  set_message("🌅 Loading environment & baking IBL...");
+  let hdr_bytes = fetch_bytes(path).await.expect("failed to fetch HDR");
+
+  ENGINE.with(|cell| {
+    if let Some(engine) = cell.borrow_mut().as_mut() {
+      engine.set_environment(&hdr_bytes).expect("failed to set environment");
+    }
+  });
+
+  set_message("");
 }
 
 // Build the scene with the given model & HDR environment, and create a camera node.
 // The camera node is stored in a thread-local so it can be updated each frame.
-fn build_scene(model: Vec<u8>, hdr: Vec<u8>) {
+fn build_scene() {
   ENGINE.with(|cell| {
     if let Some(engine) = cell.borrow_mut().as_mut() {
       let (scene, root) = engine.create_scene();
 
-      // engine.create_light_node(root, vec3(5.3, 3.2, -3.5), vec3(1.0, 1.0, 1.0), 135.0);
-      // engine.create_light_node(root, vec3(-7.0, 2.0, 1.0), vec3(1.0, 0.3, 0.1), 45.0);
-      // engine.create_light_node(root, vec3(3.0, 5.0, 4.0), vec3(0.1, 0.8, 0.3), 15.0);
-
-      engine.set_environment(&hdr);
-      let n = engine.load_gltf_bytes(&model, root).unwrap();
-
-      // Get the node AABB size and use that to scale the model to 1,1,1
-      let aabb = engine.node(n).aabb().unwrap();
-      let size = aabb.size();
-      let size_avg = (size.x + size.y + size.z) / 3.0;
-      let center = aabb.center();
-      let scale = glam::vec3(1.0 / size_avg, 1.0 / size_avg, 1.0 / size_avg);
-
-      // Move the model so that its center is at the origin, and scale it to fit in a 1x1x1 cube
-      engine.node_mut(n).set_scale(scale);
-      engine.node_mut(n).set_position(-scale * center);
-
       let camera = engine.create_camera_node(root, vec3(0.0, 1.0, 4.0), vec3(0.0, 0.0, 0.0), glam::Vec3::ONE, 70.0, 0.1, 200.0);
+      // engine.set_skybox_mode(luxa::SkyboxMode::EnvironmentMap);
+      engine.skybox_set_mode(luxa::SkyboxMode::PrefilteredMap);
+      engine.skybox_set_mip_level(1.8);
+
+      ROOT_NODE.with(|cell| cell.set(Some(root)));
       SCENE.with(|cell| cell.set(Some(scene)));
       CAMERA.with(|cell| cell.set(Some(camera)));
     }
   });
 
-  // remove #loading  div from the DOM, so the user can see the canvas
+  set_message("");
+}
+
+// Update the loading message in the DOM. This is called from async functions, so it must be a separate function.
+fn set_message(message: &str) {
   let document = web_sys::window()
     .and_then(|window| window.document())
     .ok_or_else(|| JsValue::from_str("no document"))
     .unwrap();
-  if let Some(loading) = document.get_element_by_id("loading") {
-    loading.remove();
+  if let Some(message_div) = document.get_element_by_id("message") {
+    message_div.set_inner_html(message);
   }
 }
 
@@ -226,6 +255,7 @@ fn drop_pointer(e: PointerEvent) {
   });
 }
 
+// Start the render loop. This function schedules itself to be called on each animation frame.
 fn start_render_loop() {
   ENGINE.with(|cell| {
     if let Some(engine) = cell.borrow_mut().as_mut() {
@@ -242,6 +272,7 @@ fn start_render_loop() {
         let dir = glam::Quat::from_euler(glam::EulerRot::YXZ, yaw, pitch, 0.0) * glam::Vec3::Z;
         engine.node_mut(camera).set_position(dir * radius);
 
+        // Actually rendering the scene happens here
         if let Err(e) = engine.render(scene, camera) {
           log::error!("render failed: {e:#}");
         }

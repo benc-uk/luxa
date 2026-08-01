@@ -170,11 +170,23 @@ impl Node3D {
     self.parent = Some(parent);
   }
 
+  pub(crate) fn parent(&self) -> Option<Node3DHandle> {
+    self.parent
+  }
+
   pub(crate) fn add_child(&mut self, child: Node3DHandle) {
     if let Some(children) = &mut self.children {
       children.push(child);
     } else {
       self.children = Some(vec![child]);
+    }
+  }
+
+  pub(crate) fn remove_child(&mut self, child: Node3DHandle) {
+    if let Some(children) = &mut self.children
+      && let Some(index) = children.iter().position(|&handle| handle == child)
+    {
+      children.remove(index);
     }
   }
 

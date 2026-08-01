@@ -9,9 +9,14 @@ struct CameraUniform {
     pos: vec3f,
 };
 
+struct MipUniform {
+    level: f32,
+};
+
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(1) @binding(0) var t_env: texture_cube<f32>;
 @group(1) @binding(1) var s_env: sampler;
+@group(2) @binding(0) var<uniform> mip_uniform: MipUniform;
 
 struct VertexOutput {
     @builtin(position) clip: vec4f,
@@ -37,7 +42,7 @@ fn frag_main(in: VertexOutput) -> @location(0) vec4f {
     let dir = normalize(world - camera.pos);
 
     // Pin to mip 0: the env cube carries a mip chain
-    let env_sample = textureSampleLevel(t_env, s_env, dir, 0.0);
+    let env_sample = textureSampleLevel(t_env, s_env, dir, mip_uniform.level);
 
     let tone_mapped = tonemap_aces(env_sample.rgb * EXPOSURE);
     return vec4f(tone_mapped, 1.0);

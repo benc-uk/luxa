@@ -15,11 +15,15 @@ use crate::nodes::Node3D;
 use gpu::{create_depth_texture, init};
 use ibl::Ibl;
 pub(crate) use lighting::LightsUniform;
+pub use skybox::SkyboxMode;
 
 use pipelines::Pipelines;
 use render::BindGroupLayouts;
 pub use resources::{MaterialHandle, MeshHandle, Node3DHandle, SceneHandle, TextureHandle};
 use wgpu::util::DeviceExt;
+
+// Deafult placeholder environment HDR, baked into the engine binary. This is a neutral environment with a sun and sky
+const DEFAULT_ENVIRONMENT_HDR: &[u8] = include_bytes!("../assets/default.hdr");
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -144,14 +148,8 @@ impl Engine {
       usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
 
-    // Step 5 - Placeholder IBL for now, until we load an HDR environment map. This is a solid color, so we can see something in the scene.
-    let colour = wgpu::Color {
-      r: 0.03,
-      g: 0.03,
-      b: 0.03,
-      a: 1.0,
-    };
-    let ibl = Ibl::new_solid_color(&device, &queue, &bind_group_layouts, colour)?;
+    // Step 5 - Bake the built-in neutral environment into the default IBL resources.
+    let ibl = Ibl::new(&device, &queue, DEFAULT_ENVIRONMENT_HDR, &bind_group_layouts)?;
 
     let lights_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
       label: Some("Lights Bind Group"),
@@ -307,5 +305,13 @@ impl Engine {
     });
 
     Ok(())
+  }
+
+  pub fn skybox_set_mode(&mut self, mode: SkyboxMode) {
+    self.skybox.set_mode(mode);
+  }
+
+  pub fn skybox_set_mip_level(&mut self, mip_level: f32) {
+    self.skybox.set_mip_level(&self.queue, mip_level);
   }
 }

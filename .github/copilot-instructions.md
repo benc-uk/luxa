@@ -1,23 +1,38 @@
-# wgpu-learning
+# Luxa workspace
 
-A Rust workspace for learning `wgpu` (WebGPU). This is a learning project, not AAA or production code, so favour simple, readable designs over maximum performance or completeness. Flag when a simplification has real limits, but do not over-engineer.
+This is a Rust workspace for learning `wgpu` and building a small, reusable 3D engine. Favour simple, readable designs over production-grade complexity, but call out limitations that affect correctness or the public API.
 
-## Workspace layout
+## Crate boundaries
 
-Three crates, each with a distinct role. Do not blur them together.
+The workspace has four crates with distinct roles:
 
-- **`wgpu-engine/`** — the actual reusable 3D engine (library crate). This is where the real work happens. Its whole point is to hide the raw `wgpu` graph behind a small, ergonomic public API.
-- **`harness/`** — a test app (binary) that consumes the engine. It should use **only** the engine's public API (whatever `wgpu-engine/src/lib.rs` re-exports); never reach into engine internals or depend on `wgpu` types directly. If the harness needs something the public API can't express, that's a signal to improve the engine's API, not to bypass it.
-- **`cube/`** — a standalone, self-contained experiment. Older and independent; it does **not** follow the engine's conventions and does not use `wgpu-engine`. Do not refactor it to match the engine unless explicitly asked.
+- **`luxa/`** is the reusable engine library and owns the internal `wgpu` resource graph. Its public API is defined by the exports in `luxa/src/lib.rs`.
+- **`harness/`** is the native desktop example and test application. It may use application-level crates such as `winit` and `glam`, but it must consume `luxa` through its public API and must not depend on `wgpu` or engine internals.
+- **`web-viewer/`** is the WebAssembly browser viewer. Browser and DOM integration belongs here; rendering behaviour belongs in `luxa`. It must use the engine's public API rather than raw `wgpu` types.
+- **`cube/`** is an older, standalone `wgpu` learning experiment. It does not use `luxa`; do not refactor it into the engine architecture unless explicitly asked.
 
-## Shared conventions (all crates)
+If a consumer cannot express something through `luxa`'s public API, improve that API instead of exposing an internal GPU object or reaching into a private module.
+
+## Working style
+
+- Default to advice: inspect the relevant code, explain the local issue or design choice, propose a focused change and wait for approval before editing.
+- Treat approval to implement a proposal as permission for the complete focused change, including formatting and validation. Do not repeatedly ask about routine implementation details.
+- Read-only inspection and validation of the current state do not require approval.
+
+## Conventions
 
 - Rust edition 2024.
-- Formatting: 2-space indent, `max_width = 180` (see `rustfmt.toml`). Run `cargo fmt`; do not hand-format against these settings.
-- Maths: use `glam` (`Vec3`, `Mat4`, `Quat`). Do not roll your own vector/matrix maths.
-- Errors: fallible constructors and IO return `anyhow::Result<T>`; use `?` and `anyhow::bail!`.
-- Logging: use the `log` crate macros (`log::info!`, `log::debug!`), never `println!`.
-- Timing: use `web-time::Instant`, not `std::time::Instant`. `wgpu-engine` and `cube` target `wasm32-unknown-unknown` as well as desktop, so avoid non-wasm-safe std APIs (threads, blocking IO, `std::time`).
-- `wgpu` is pinned (currently `29.0`) on purpose due to an upstream bug. Do not bump it without checking the note in the relevant `Cargo.toml`.
-- Give every `wgpu` object a `label: Some("...")` for debuggability.
-- Start each module file with a `// ===...` banner comment summarising its purpose, matching the existing files.
+- Formatting is controlled by `rustfmt.toml`: 2-space indentation and `max_width = 180`. Run `cargo fmt` after Rust edits.
+- Use `glam` for vector, matrix and quaternion maths.
+- Follow each crate's existing error boundary. Engine and native fallible operations generally use `anyhow::Result<T>` and `?`; WebAssembly exports may translate failures to `JsValue` or browser logging.
+- Use the `log` macros rather than `println!` for runtime diagnostics.
+- Use `web-time` for timing in code that targets both native and WebAssembly. Do not introduce threads or blocking IO into WebAssembly code paths.
+- `wgpu` is deliberately pinned to `29.0` in `luxa` and `cube` because of the upstream issue noted in their manifests. Do not change it without checking that issue.
+- Give created `wgpu` objects meaningful `label: Some("...")` values.
+- Preserve the existing module banner style when adding or substantially rewriting a module.
+
+## Validation
+
+- Run the narrowest relevant `cargo check -p <crate>` while iterating.
+- For WebAssembly-specific changes, also check the affected crate with `--target wasm32-unknown-unknown`.
+- Before finishing Rust changes, run `cargo fmt --all -- --check` and the relevant tests or workspace check.

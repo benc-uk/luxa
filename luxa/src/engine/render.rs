@@ -10,7 +10,6 @@ pub(crate) struct BindGroupLayouts {
   pub(crate) node: wgpu::BindGroupLayout,
   pub(crate) lights: wgpu::BindGroupLayout,
   pub(crate) env: wgpu::BindGroupLayout, // Note that this is not used in the main render pass, but is used in the IBL baking passes
-                                         //pub(crate) ibl: wgpu::BindGroupLayout, // Note that this is not used in the main render pass, but is used in the IBL baking passes
 }
 
 impl Engine {
@@ -167,7 +166,7 @@ impl Engine {
 
       // Renderer irriadiance or skybox cube as a skybox
       // self.skybox.render(&mut render_pass, &self.ibl.irradiance_bind_group, &self.frame_cam_bind_group);
-      self.skybox.render(&mut render_pass, &self.ibl.env_bind_group, &self.frame_cam_bind_group);
+      self.skybox.render(&mut render_pass, &self);
       //self.skybox.render(&mut render_pass, &self.ibl.prefilter_bind_group, &self.frame_cam_bind_group);
 
       // 🔥 TODO: Sort blended meshes by depth from camera, so they are drawn back to front. This is important for correct alpha blending.

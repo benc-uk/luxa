@@ -103,6 +103,7 @@ impl Ibl {
   }
 
   // Create a new IBL with a solid color for the environment cube. This is useful for testing and debugging only
+  #[allow(dead_code)]
   pub(crate) fn new_debug(device: &wgpu::Device, queue: &wgpu::Queue, layouts: &BindGroupLayouts) -> Result<Self> {
     let env = Cubemap::new_render_target(device, ENV_SIZE, ENV_MIPS, wgpu::TextureFormat::Rgba16Float, "Env Cube");
 
@@ -127,22 +128,7 @@ impl Ibl {
     Self::from_env(device, queue, env, layouts)
   }
 
-  // Create an "empty" IBL with a solid color for the environment cube. This is useful for having a default IBL when no HDR is provided
-  pub(crate) fn new_solid_color(device: &wgpu::Device, queue: &wgpu::Queue, layouts: &BindGroupLayouts, color: wgpu::Color) -> Result<Self> {
-    let env = Cubemap::new_render_target(device, ENV_SIZE, ENV_MIPS, wgpu::TextureFormat::Rgba16Float, "Env Cube");
-
-    // Fill each face with the same color.
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Env Cube Fill") });
-    for face in 0..6 {
-      fill_face(&mut encoder, &env, face, color);
-    }
-
-    queue.submit([encoder.finish()]);
-
-    Self::from_env(device, queue, env, layouts)
-  }
-
-  // Shared tail for all three constructors: once env's six faces are filled, build the
+  // Shared tail for both constructors: once env's six faces are filled, build the
   // runtime bind group the skybox samples and assemble the Ibl. Step 5b will grow this
   // to also bake the irradiance cube from env.
   fn from_env(device: &wgpu::Device, queue: &wgpu::Queue, env: Cubemap, layouts: &BindGroupLayouts) -> Result<Self> {
@@ -247,6 +233,7 @@ impl Ibl {
 }
 
 // Simple helper to fill a cube face with a solid color. Used for debugging and testing.
+#[allow(dead_code)]
 fn fill_face(encoder: &mut wgpu::CommandEncoder, cube: &crate::models::Cubemap, face: usize, color: wgpu::Color) {
   // The pass is dropped at the end of each iteration; dropping records the clear.
   let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

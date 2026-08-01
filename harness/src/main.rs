@@ -69,9 +69,9 @@ impl ApplicationHandler for App {
     let mut engine = pollster::block_on(Engine::new(Arc::clone(&window), (window_size.width, window_size.height))).expect("failed to create engine");
 
     let (scene, root) = engine.create_scene();
-    engine.create_light_node(root, vec3(5.3, 3.2, -3.5), vec3(1.0, 1.0, 1.0), 15.0);
-    engine.create_light_node(root, vec3(-7.0, 2.0, 1.0), vec3(1.0, 0.3, 0.1), 15.0);
-    engine.create_light_node(root, vec3(3.0, 5.0, 4.0), vec3(0.1, 0.8, 0.3), 15.0);
+    // engine.create_light_node(root, vec3(5.3, 3.2, -3.5), vec3(1.0, 1.0, 1.0), 15.0);
+    // engine.create_light_node(root, vec3(-7.0, 2.0, 1.0), vec3(1.0, 0.3, 0.1), 15.0);
+    // engine.create_light_node(root, vec3(3.0, 5.0, 4.0), vec3(0.1, 0.8, 0.3), 15.0);
 
     // Initial camera position is not important, since we will immediately update it
     self.camera = Some(engine.create_camera_node(root, vec3(0.0, 0.0, 3.0), vec3(0.0, 0.0, 0.0), Vec3::ONE, 45.0, 0.1, 100.0));
@@ -81,10 +81,10 @@ impl ApplicationHandler for App {
     self.radius = 3.0;
 
     let node = engine.create_node(root, vec3(0.0, 0.0, 0.0), Quat::IDENTITY, vec3(1.0, 1.0, 1.0));
-    let pot = engine.load_gltf("./assets/models/PotOfCoals.glb", node).expect("failed to load gltf");
+    let pot = engine.load_gltf("../assets/models/khronos/PotOfCoals.glb", node).expect("failed to load gltf");
     engine.node_mut(pot).set_position(vec3(0.0, 0.0, 0.0));
     engine.node_mut(pot).set_scale(vec3(20.0, 20.0, 20.0));
-    let cube = engine.load_gltf("./assets/models/Cube.glb", node).expect("failed to load gltf");
+    let cube = engine.load_gltf("../assets/models/khronos/Cube.glb", node).expect("failed to load gltf");
     engine.node_mut(cube).set_scale(vec3(1.0, 1.0, 1.0));
     engine.node_mut(cube).set_position(vec3(0.0, -1.0, 0.0));
 

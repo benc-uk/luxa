@@ -44,14 +44,27 @@
         z-index: 1000;
       }
 
-      #loading {
+      #bg-select {
+        left: auto;
+        right: 10px;
+      }
+
+      #message {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        font-size: 2rem;
+        font-size: 1.5rem;
         color: #fff;
         font-family: sans-serif;
+        text-shadow:
+          -2px -2px 0 #000,
+          2px -2px 0 #000,
+          -2px 2px 0 #000,
+          2px 2px 0 #000,
+          0 3px 10px #000,
+          0 0 24px #000;
+        z-index: 1000;
       }
 
       option {
@@ -60,34 +73,47 @@
     </style>
 
     <script type="module">
-      import init from './pkg/web_viewer.js';
-      init();
+      import init, { load_model, load_environment } from './pkg/web_viewer.js';
+
+      await init();
+      window.load_model = load_model;
+      window.load_environment = load_environment;
     </script>
   </head>
 
   <body>
     <canvas id="canvas" width="1440" height="1440"></canvas>
+
     <select id="model-select">
       <option value="assets/models/khronos/DamagedHelmet.glb">Scifi Helmet</option>
       <option value="assets/models/khronos/PotOfCoals.glb">Pot of Coals</option>
       <option value="assets/models/khronos/WaterBottle.glb">Water Bottle</option>
       <option value="assets/models/khronos/Duck.glb">Duck</option>
       <option value="assets/models/polyhaven/brass_vase_03_2k.glb">Brass Vase</option>
+      <option value="assets/models/polyhaven/portable_searchlight_2k.glb">Portable Searchlight</option>
+      <option value="assets/models/polyhaven/Television_01_4k.glb">Television</option>
     </select>
 
-    <div id="loading">⏳ Loading model...</div>
+    <select id="bg-select">
+      <option value="assets/ibl/colorful_studio_4k.hdr">Colorful Studio</option>
+      <option value="assets/ibl/venice_sunset_4k.hdr">Venice Sunset</option>
+      <option value="assets/ibl/ferndale_studio_04_4k.hdr">Ferndale Studio</option>
+      <option value="assets/ibl/photo_studio_loft_hall_2k.hdr">Photo Studio</option>
+      <option value="assets/ibl/veranda_2k.hdr">Veranda</option>
+    </select>
+
+    <div id="message">⏳ Loading...</div>
 
     <script>
-      const select = document.getElementById('model-select');
+      const modelSelect = document.getElementById('model-select');
+      const bgSelect = document.getElementById('bg-select');
 
-      // Reflect the current URL hash (e.g. #water_bottle.glb) in the picker on load.
-      const current = decodeURIComponent(location.hash.replace(/^#/, ''));
-      if (current) select.value = current;
+      modelSelect.addEventListener('change', () => {
+        window.load_model(modelSelect.value);
+      });
 
-      // Set the hash to the chosen model and reload so the wasm picks it up at startup.
-      select.addEventListener('change', () => {
-        location.hash = select.value;
-        location.reload();
+      bgSelect.addEventListener('change', () => {
+        window.load_environment(bgSelect.value);
       });
     </script>
   </body>

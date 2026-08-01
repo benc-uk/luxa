@@ -6,6 +6,6 @@ mod nodes;
 mod parser;
 
 pub use common::{Aabb, Color, Size};
-pub use engine::{Engine, MaterialHandle, MeshHandle, Node3DHandle, SceneHandle, TextureHandle};
+pub use engine::{Engine, MaterialHandle, MeshHandle, Node3DHandle, SceneHandle, SkyboxMode, TextureHandle};
 pub use models::{AlphaMode, Material, Mesh, MeshBuilder, Vertex};
 pub use nodes::Node3D;

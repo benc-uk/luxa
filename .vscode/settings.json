@@ -1,5 +1,19 @@
 {
-  // "rust-analyzer.cargo.target": "wasm32-unknown-unknown",
+  "files.watcherExclude": {
+    "**/target/**": true,
+    "**/pkg/**": true
+  },
+  "search.exclude": {
+    "**/target": true,
+    "**/pkg": true
+  },
+  "rust-analyzer.files.exclude": ["target", "cube", "harness/target"],
+  "rust-analyzer.cachePriming.enable": false,
+  "rust-analyzer.cachePriming.numThreads": 2,
+  "rust-analyzer.cargo.allTargets": false,
+  "rust-analyzer.check.allTargets": false,
+  "rust-analyzer.check.workspace": false,
+
   "rust-analyzer.inlayHints.typeHints.enable": false,
   "rust-analyzer.inlayHints.parameterHints.enable": false,
   "rust-analyzer.inlayHints.chainingHints.enable": false,

@@ -1,4 +1,4 @@
-# wgpu-learning
+# Luxa
 
 A Rust workspace for learning [wgpu](https://wgpu.rs/) (WebGPU) and modern GPU rendering, built up
 from a minimal single-file cube into a small but reasonably complete 3D engine.
@@ -10,7 +10,7 @@ completeness.
 
 ## Crates
 
-The workspace is a Cargo workspace with three crates, each with a distinct role.
+The workspace is a Cargo workspace with four crates, each with a distinct role.
 
 ### [luxa](luxa/) - the engine
 
@@ -21,9 +21,7 @@ objects.
 
 Features:
 
-- **glTF 2.0 loading** of `.gltf` and `.glb` assets, including meshes, materials and textures. See
-  the [glTF parser guide](luxa/PARSER.md) for the import flow, terminology, supported features and
-  current limitations.
+- **glTF 2.0 loading** of `.gltf` and `.glb` assets, including meshes, materials and textures.
 - **Scene graph** with a node hierarchy (`Node3D`), parent/child transforms and world-matrix
   propagation via depth-first traversal.
 - **Multiple scenes**, each with its own root node, addressed by `SceneHandle`.
@@ -31,7 +29,7 @@ Features:
   (`create_mesh_node`, `create_camera_node`, `create_light_node`).
 - **Multiple lights** (currently up to 16) with position, colour and intensity, gathered from the
   scene graph each frame.
-- **PBR metallic-roughness shading**. See the [PBR notes](luxa/PBR.md).
+- **PBR metallic-roughness shading**.
 - **Handle-based resources** (meshes, materials, textures, nodes, scenes) stored in slot maps, so
   the raw `wgpu` types never leak into the public API.
 - **Cross-platform**: targets native desktop and `wasm32-unknown-unknown` for WebGPU-capable
@@ -43,6 +41,12 @@ A small binary that drives `luxa` through a `winit` window and event loop. It co
 engine's public API, so it doubles as a worked example of how to set up an engine, build a scene,
 load a glTF model, add lights and a camera, and render each frame. If the harness needs something
 the public API cannot express, that is a signal to improve the engine, not to bypass it.
+
+### [web-viewer](web-viewer/) - the browser viewer
+
+A WebAssembly viewer that consumes `luxa` through its public API. It owns browser-specific work such
+as DOM access, asset fetching, pointer input and the render loop, while the engine continues to own
+the rendering implementation. The viewer can switch glTF models and HDR environments at runtime.
 
 ### [cube](cube/) - the learning exercise
 
@@ -62,7 +66,7 @@ cargo run -p cube         # run the standalone cube
 cargo build               # build everything
 ```
 
-See each crate's `Makefile` and README for WebAssembly build steps.
+See the `cube` and `web-viewer` Makefiles for WebAssembly build and local serving commands.
 
 ## Conventions
 

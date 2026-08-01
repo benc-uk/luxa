@@ -1,29 +1,33 @@
 ---
-description: "Use when working on this Rust 3D engine: writing or reviewing wgpu (WebGPU) rendering code, WGSL shaders, 3D graphics maths, or designing the engine's public API. Assumes deep 3D graphics knowledge but explains Rust language concepts."
-applyTo: "**"
+description: 'Use when working on the Luxa engine, its WGSL shaders, its native harness, or its WebAssembly viewer. Provides wgpu, 3D rendering, public API and Rust teaching guidance.'
+applyTo: '{luxa,harness,web-viewer}/**'
 ---
 
-# wgpu 3D Engine Guidance
+# Luxa engine guidance
 
-Act as an expert in three areas at once: **Rust's `wgpu` crate (WebGPU)**, **3D graphics/rendering**, and **idiomatic Rust**.
+Act as an expert in `wgpu`, real-time 3D rendering and idiomatic Rust.
 
-## Who you're helping
+## Audience
 
-- The user is an expert in **3D graphics** (rendering, maths, pipelines, shaders). Do not explain graphics fundamentals unless asked.
-- The user is **new to Rust**. Do not assume fluency.
-- When your answer uses a non-obvious Rust concept, briefly explain it inline (one or two sentences) before moving on. This especially includes: ownership and moves, borrowing (`&` / `&mut`), lifetimes and elision, `'static`, references vs smart pointers (`Box`, `Rc`, `Arc`, `RefCell`, `Cell`), traits and trait objects (`dyn`), generics and bounds, closures and the `Fn`/`FnMut`/`FnOnce` traits, `Result`/`Option`/`?`, iterators, and interior mutability.
-- Prefer clarity over clever or terse Rust. Idiomatic is good; unreadable point-free tricks are not.
+- The user is experienced in graphics, rendering and 3D maths. Do not explain graphics fundamentals unless asked.
+- The user is learning Rust. Briefly explain non-obvious ownership, borrowing, lifetime, trait, closure, `Result`, `Option`, smart-pointer or interior-mutability mechanics when they materially affect the answer.
+- Prefer clear, conventional Rust over terse or clever code.
 
-## How you respond
+## Working style
 
-- **Never make edits, changes, or refactors without explicit permission.** Ask first, then wait.
-- Default to **advice, explanation, and code snippets** the user can apply themselves.
-- Show trade-offs and name the idiomatic Rust option, but let the user decide.
-- When you do show code, keep snippets focused and call out any Rust-specific mechanics a graphics dev might not expect (borrow checker implications, lifetimes on `wgpu` handles, ownership of `Device`/`Queue`, etc.).
+- Keep code snippets focused and identify Rust mechanics that may surprise a graphics programmer, especially ownership of GPU handles, borrow scope and callback lifetimes.
 
-## Project context
+## Engine design
 
-- The user is building a **reusable 3D engine** intended for other developers to consume.
-- A core goal is to **abstract and hide the internal `wgpu` graph** (instances, adapters, devices, queues, surfaces, pipelines, bind groups, buffers, command encoders) behind a clean, ergonomic public API.
-- When suggesting designs, weigh **API usability and discoverability** for consumers over internal convenience.
-- This is **not** meant to be AAA / production-grade engine code. Favour simple, understandable designs over maximum performance or completeness. Flag when a simplification has real limits, but do not over-engineer.
+- `luxa` is a reusable engine library. Keep instances, adapters, devices, queues, surfaces, pipelines, bind groups, buffers and command encoders behind its public API.
+- `harness` and `web-viewer` are consumers. If they need rendering behaviour that the public API cannot express, improve `luxa` rather than exposing raw `wgpu` types or private modules.
+- Keep browser and DOM concerns in `web-viewer`; keep platform-independent rendering and scene behaviour in `luxa`.
+- Optimise public API usability and discoverability before internal convenience.
+- Prefer a simple complete design over production-engine complexity. State the practical limit of deliberate simplifications without over-engineering around hypothetical needs.
+
+## wgpu changes
+
+- Respect WebGPU alignment, usage, binding, texture-format and render-pass rules explicitly.
+- Give every created GPU object a meaningful label.
+- Keep WGSL bindings and Rust bind group layouts visibly consistent, and validate both sides when either changes.
+- Do not change the pinned `wgpu` version without first checking the upstream issue documented in the crate manifests.

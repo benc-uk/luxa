@@ -67,6 +67,21 @@ impl Engine {
     self.attach(node, parent)
   }
 
+  pub fn remove_node(&mut self, handle: Node3DHandle) {
+    if let Some(node) = self.nodes.remove(handle) {
+      if let Some(parent_handle) = node.parent() {
+        if let Some(parent_node) = self.nodes.get_mut(parent_handle) {
+          parent_node.remove_child(handle);
+        }
+      }
+      for &child_handle in node.children() {
+        self.remove_node(child_handle);
+      }
+    } else {
+      log::warn!("Attempted to remove non-existent node with handle {:?}", handle);
+    }
+  }
+
   pub fn create_mesh_node(&mut self, parent: Node3DHandle, meshes: Vec<MeshHandle>, position: Vec3, rotation: Quat, scale: Vec3) -> Node3DHandle {
     let node = Node3D::new_mesh(&self.device, &self.bind_group_layouts.node, &self.meshes, meshes, position, rotation, scale);
     self.attach(node, parent)
