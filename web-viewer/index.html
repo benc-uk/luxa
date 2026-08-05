@@ -12,17 +12,13 @@
         padding: 0;
         overflow: hidden;
         background: #112;
+        font-family: sans-serif;
       }
 
       canvas {
         display: block;
         background: #000;
-        /* Stop the browser turning touch drags/pinches on the canvas into
-           page scroll or zoom, so our pointer handlers get the raw gestures. */
         touch-action: none;
-        /* Canvas is square (1:1), so fit to whichever window dimension is
-           smaller. This gives 100% height in landscape and 100% width in
-           portrait, always covering as much as possible without clipping. */
         width: min(100vw, 100vh);
         height: min(100vw, 100vh);
         position: absolute;
@@ -32,12 +28,15 @@
       }
 
       select {
-        font-size: 1.2rem;
+        font-size: 1.1rem;
         padding: 0.2rem 0.4rem;
         background: #222;
         color: #c5c5c5;
         border-radius: 0.4rem;
         padding: 0.4rem;
+      }
+
+      body > select {
         position: absolute;
         top: 10px;
         left: 10px;
@@ -68,7 +67,24 @@
       }
 
       option {
+        font-size: 1rem;
+      }
+
+      #settings {
+        position: absolute;
+        top: 70px;
+        left: 10px;
         font-size: 1.2rem;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.25);
+        padding: 0.7rem;
+        border-radius: 0.4rem;
+        backdrop-filter: blur(10px);
+      }
+
+      #settings select {
+        display: block;
+        margin-top: 0.4rem;
       }
     </style>
 
@@ -103,6 +119,14 @@
     </select>
 
     <div id="message">⏳ Loading...</div>
+
+    <div id="settings">
+      Skybox Mode:
+      <select id="skybox-mode-select">
+        <option value="environment">Environment Map</option>
+        <option value="prefiltered">Prefiltered Map</option>
+      </select>
+    </div>
 
     <script>
       const modelSelect = document.getElementById('model-select');

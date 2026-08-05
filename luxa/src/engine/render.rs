@@ -164,12 +164,12 @@ impl Engine {
         }
       }
 
-      // Renderer irriadiance or skybox cube as a skybox
-      // self.skybox.render(&mut render_pass, &self.ibl.irradiance_bind_group, &self.frame_cam_bind_group);
+      // Renderer skybox after opaque meshes, but before blended meshes
       self.skybox.render(&mut render_pass, &self);
-      //self.skybox.render(&mut render_pass, &self.ibl.prefilter_bind_group, &self.frame_cam_bind_group);
 
-      // 🔥 TODO: Sort blended meshes by depth from camera, so they are drawn back to front. This is important for correct alpha blending.
+      // 🔥 TODO: Sort blended meshes by depth from camera
+
+      //log::error!("Rendering {} blended meshes", blended_meshes.len());
 
       // Render all blended meshes after all opaque meshes, so they are drawn on top of the opaque ones.
       for (node, mesh, material) in blended_meshes {

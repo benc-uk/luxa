@@ -139,9 +139,9 @@ fn build_scene() {
       let (scene, root) = engine.create_scene();
 
       let camera = engine.create_camera_node(root, vec3(0.0, 1.0, 4.0), vec3(0.0, 0.0, 0.0), glam::Vec3::ONE, 70.0, 0.1, 200.0);
-      // engine.set_skybox_mode(luxa::SkyboxMode::EnvironmentMap);
-      engine.skybox_set_mode(luxa::SkyboxMode::PrefilteredMap);
-      engine.skybox_set_mip_level(1.8);
+      engine.skybox_set_mode(luxa::SkyboxMode::EnvironmentMap);
+      // engine.skybox_set_mode(luxa::SkyboxMode::PrefilteredMap);
+      // engine.skybox_set_mip_level(1.8);
 
       ROOT_NODE.with(|cell| cell.set(Some(root)));
       SCENE.with(|cell| cell.set(Some(scene)));
