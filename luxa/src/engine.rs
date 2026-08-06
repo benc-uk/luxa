@@ -22,9 +22,6 @@ use render::BindGroupLayouts;
 pub use resources::{MaterialHandle, MeshHandle, Node3DHandle, SceneHandle, TextureHandle};
 use wgpu::util::DeviceExt;
 
-// Deafult placeholder environment HDR, baked into the engine binary. This is a neutral environment with a sun and sky
-const DEFAULT_ENVIRONMENT_HDR: &[u8] = include_bytes!("../assets/default.hdr");
-
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct FrameUniform {
@@ -87,7 +84,7 @@ pub struct Engine {
   lights_uniform_buffer: wgpu::Buffer,
   lights_bind_group: wgpu::BindGroup,
 
-  // Env map bind group for skybox rendering
+  // Image-based lighting resources and environment bake state
   ibl: Ibl,
   skybox: skybox::Skybox,
 
@@ -148,43 +145,10 @@ impl Engine {
       usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
 
-    // Step 5 - Bake the built-in neutral environment into the default IBL resources.
-    let ibl = Ibl::new(&device, &queue, DEFAULT_ENVIRONMENT_HDR, &bind_group_layouts)?;
+    // Step 5 - Create the IBL resources with their default environment.
+    let ibl = Ibl::new(&device, &queue, &bind_group_layouts)?;
 
-    let lights_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-      label: Some("Lights Bind Group"),
-      layout: &bind_group_layouts.lights,
-      entries: &[
-        wgpu::BindGroupEntry {
-          binding: 0,
-          resource: lights_uniform_buffer.as_entire_binding(),
-        },
-        wgpu::BindGroupEntry {
-          binding: 1,
-          resource: wgpu::BindingResource::TextureView(&ibl.irradiance.view),
-        },
-        wgpu::BindGroupEntry {
-          binding: 2,
-          resource: wgpu::BindingResource::Sampler(&ibl.irradiance.sampler),
-        },
-        wgpu::BindGroupEntry {
-          binding: 3,
-          resource: wgpu::BindingResource::TextureView(&ibl.prefilter.view),
-        },
-        wgpu::BindGroupEntry {
-          binding: 4,
-          resource: wgpu::BindingResource::Sampler(&ibl.prefilter.sampler),
-        },
-        wgpu::BindGroupEntry {
-          binding: 5,
-          resource: wgpu::BindingResource::TextureView(&ibl.brdf_lut.view),
-        },
-        wgpu::BindGroupEntry {
-          binding: 6,
-          resource: wgpu::BindingResource::Sampler(&ibl.brdf_lut.sampler),
-        },
-      ],
-    });
+    let lights_bind_group = create_lights_bind_group(&device, &bind_group_layouts.lights, &lights_uniform_buffer, &ibl);
 
     // Step 6 - Create the shaders & render pipelines
     let target_format = surf_config.format.add_srgb_suffix(); // add_srgb_suffix is v important, otherwise it will not work on some platforms like web
@@ -267,51 +231,58 @@ impl Engine {
   }
 
   pub fn set_environment(&mut self, hdr_bytes: &[u8]) -> anyhow::Result<()> {
-    self.ibl = Ibl::new(&self.device, &self.queue, hdr_bytes, &self.bind_group_layouts)?;
-
-    self.lights_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-      label: Some("Lights Bind Group"),
-      layout: &self.bind_group_layouts.lights,
-      entries: &[
-        wgpu::BindGroupEntry {
-          binding: 0,
-          resource: self.lights_uniform_buffer.as_entire_binding(),
-        },
-        wgpu::BindGroupEntry {
-          binding: 1,
-          resource: wgpu::BindingResource::TextureView(&self.ibl.irradiance.view),
-        },
-        wgpu::BindGroupEntry {
-          binding: 2,
-          resource: wgpu::BindingResource::Sampler(&self.ibl.irradiance.sampler),
-        },
-        wgpu::BindGroupEntry {
-          binding: 3,
-          resource: wgpu::BindingResource::TextureView(&self.ibl.prefilter.view),
-        },
-        wgpu::BindGroupEntry {
-          binding: 4,
-          resource: wgpu::BindingResource::Sampler(&self.ibl.prefilter.sampler),
-        },
-        wgpu::BindGroupEntry {
-          binding: 5,
-          resource: wgpu::BindingResource::TextureView(&self.ibl.brdf_lut.view),
-        },
-        wgpu::BindGroupEntry {
-          binding: 6,
-          resource: wgpu::BindingResource::Sampler(&self.ibl.brdf_lut.sampler),
-        },
-      ],
-    });
+    self.ibl.set_environment(&self.device, &self.queue, hdr_bytes, &self.bind_group_layouts)?;
+    self.lights_bind_group = create_lights_bind_group(&self.device, &self.bind_group_layouts.lights, &self.lights_uniform_buffer, &self.ibl);
 
     Ok(())
   }
 
-  pub fn skybox_set_mode(&mut self, mode: SkyboxMode) {
-    self.skybox.set_mode(mode);
+  pub fn set_default_environment(&mut self) -> anyhow::Result<()> {
+    self.ibl.set_default_environment(&self.device, &self.queue, &self.bind_group_layouts)?;
+    self.lights_bind_group = create_lights_bind_group(&self.device, &self.bind_group_layouts.lights, &self.lights_uniform_buffer, &self.ibl);
+
+    Ok(())
   }
 
-  pub fn skybox_set_mip_level(&mut self, mip_level: f32) {
+  pub fn skybox_set_mode(&mut self, mode: SkyboxMode, mip_level: f32) {
+    self.skybox.set_mode(mode);
     self.skybox.set_mip_level(&self.queue, mip_level);
   }
+}
+
+fn create_lights_bind_group(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, lights_uniform_buffer: &wgpu::Buffer, ibl: &Ibl) -> wgpu::BindGroup {
+  device.create_bind_group(&wgpu::BindGroupDescriptor {
+    label: Some("Lights Bind Group"),
+    layout,
+    entries: &[
+      wgpu::BindGroupEntry {
+        binding: 0,
+        resource: lights_uniform_buffer.as_entire_binding(),
+      },
+      wgpu::BindGroupEntry {
+        binding: 1,
+        resource: wgpu::BindingResource::TextureView(&ibl.irradiance().view),
+      },
+      wgpu::BindGroupEntry {
+        binding: 2,
+        resource: wgpu::BindingResource::Sampler(&ibl.irradiance().sampler),
+      },
+      wgpu::BindGroupEntry {
+        binding: 3,
+        resource: wgpu::BindingResource::TextureView(&ibl.prefilter().view),
+      },
+      wgpu::BindGroupEntry {
+        binding: 4,
+        resource: wgpu::BindingResource::Sampler(&ibl.prefilter().sampler),
+      },
+      wgpu::BindGroupEntry {
+        binding: 5,
+        resource: wgpu::BindingResource::TextureView(&ibl.brdf_lut().view),
+      },
+      wgpu::BindGroupEntry {
+        binding: 6,
+        resource: wgpu::BindingResource::Sampler(&ibl.brdf_lut().sampler),
+      },
+    ],
+  })
 }

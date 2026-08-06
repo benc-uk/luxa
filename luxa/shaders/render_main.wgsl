@@ -4,7 +4,6 @@
 // ======================================================================================
 
 const EXPOSURE: f32 = 1.0;
-const PREFILTER_MIP_COUNT: f32 = 5.0;
 const PI: f32 = 3.14159265359;
 
 struct VertexInput {
@@ -205,7 +204,8 @@ fn frag_main(in: VertexOutput) -> @location(0) vec4f {
     // Specular: prefiltered radiance along the reflection vector, at a mip chosen by
     // roughness, combined with the pre-integrated BRDF (scale, bias) from the LUT.
     let R = reflect(-V, N);
-    let prefiltered = textureSampleLevel(t_prefilter, s_prefilter, R, roughness * (PREFILTER_MIP_COUNT - 1.0)).rgb;
+    let max_prefilter_mip = f32(textureNumLevels(t_prefilter) - 1u);
+    let prefiltered = textureSampleLevel(t_prefilter, s_prefilter, R, roughness * max_prefilter_mip).rgb;
     let brdf = textureSample(t_brdf_lut, s_brdf_lut, vec2f(NdotV, roughness)).rg;
     let specular = prefiltered * (F0 * brdf.x + brdf.y);
 

@@ -94,9 +94,9 @@ impl Skybox {
     render_pass.set_bind_group(0, &engine.frame_cam_bind_group, &[]);
     let env_bind_group = match self.mode {
       SkyboxMode::None => return, // no skybox to render
-      SkyboxMode::EnvironmentMap => &engine.ibl.env_bind_group,
-      SkyboxMode::IrradianceMap => &engine.ibl.irradiance_bind_group,
-      SkyboxMode::PrefilteredMap => &engine.ibl.prefilter_bind_group,
+      SkyboxMode::EnvironmentMap => engine.ibl.env_bind_group(),
+      SkyboxMode::IrradianceMap => engine.ibl.irradiance_bind_group(),
+      SkyboxMode::PrefilteredMap => engine.ibl.prefilter_bind_group(),
     };
     render_pass.set_bind_group(1, env_bind_group, &[]);
     render_pass.set_bind_group(2, &self.mip_bind_group, &[]);

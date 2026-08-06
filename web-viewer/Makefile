@@ -10,7 +10,7 @@ check:
 	cargo check --target wasm32-unknown-unknown
 
 serve:
-	npx vite . --port 8000
+	npx --yes vite . --port 8000
 
 bundle: release
 	npx vite build

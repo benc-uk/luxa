@@ -1,3 +1,5 @@
+#![cfg(target_arch = "wasm32")]
+
 // ===================================================================================================
 // Luxa web viewer: minimal WebAssembly entry point.
 // For now this is just a "hello world" that proves the wasm toolchain, logging and DOM access work.
@@ -66,7 +68,7 @@ pub fn start() -> Result<(), JsValue> {
     setup_input(&canvas);
 
     match Engine::new_from_canvas(canvas, size).await {
-      Ok(mut engine) => {
+      Ok(engine) => {
         ENGINE.with(|cell| *cell.borrow_mut() = Some(engine));
       }
 
@@ -120,15 +122,40 @@ pub async fn load_model(path: &str) {
 #[wasm_bindgen]
 pub async fn load_environment(path: &str) {
   set_message("🌅 Loading environment & baking IBL...");
-  let hdr_bytes = fetch_bytes(path).await.expect("failed to fetch HDR");
+  let hdr_bytes = if path == "default" {
+    None
+  } else {
+    Some(fetch_bytes(path).await.expect("failed to fetch HDR"))
+  };
 
   ENGINE.with(|cell| {
-    if let Some(engine) = cell.borrow_mut().as_mut() {
-      engine.set_environment(&hdr_bytes).expect("failed to set environment");
+    let mut engine = cell.borrow_mut();
+    let Some(engine) = engine.as_mut() else { return };
+
+    match hdr_bytes.as_deref() {
+      Some(hdr_bytes) => engine.set_environment(hdr_bytes),
+      None => engine.set_default_environment(),
     }
+    .expect("failed to set environment");
   });
 
   set_message("");
+}
+
+#[wasm_bindgen]
+pub async fn set_skybox_mode(mode: &str) {
+  log::info!("setting skybox mode to {mode}");
+  ENGINE.with(|cell| {
+    if let Some(engine) = cell.borrow_mut().as_mut() {
+      match mode {
+        "env" => engine.skybox_set_mode(luxa::SkyboxMode::EnvironmentMap, 0.0),
+        "env_blurred" => engine.skybox_set_mode(luxa::SkyboxMode::EnvironmentMap, 5.0),
+        "prefiltered" => engine.skybox_set_mode(luxa::SkyboxMode::PrefilteredMap, 1.6),
+        "none" => engine.skybox_set_mode(luxa::SkyboxMode::None, 0.0),
+        _ => log::warn!("unknown skybox mode: {mode}"),
+      }
+    }
+  });
 }
 
 // Build the scene with the given model & HDR environment, and create a camera node.
@@ -139,9 +166,7 @@ fn build_scene() {
       let (scene, root) = engine.create_scene();
 
       let camera = engine.create_camera_node(root, vec3(0.0, 1.0, 4.0), vec3(0.0, 0.0, 0.0), glam::Vec3::ONE, 70.0, 0.1, 200.0);
-      engine.skybox_set_mode(luxa::SkyboxMode::EnvironmentMap);
-      // engine.skybox_set_mode(luxa::SkyboxMode::PrefilteredMap);
-      // engine.skybox_set_mip_level(1.8);
+      engine.skybox_set_mode(luxa::SkyboxMode::EnvironmentMap, 0.0);
 
       ROOT_NODE.with(|cell| cell.set(Some(root)));
       SCENE.with(|cell| cell.set(Some(scene)));
