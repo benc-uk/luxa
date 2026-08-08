@@ -2,6 +2,9 @@
 name = "web-viewer"
 version = "0.1.0"
 edition = "2024"
+description = "Luxa example WebAssembly viewer"
+repository = "https://github.com/benc-uk/luxa"
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

@@ -4,6 +4,7 @@ mod helpers;
 mod models;
 mod nodes;
 mod parser;
+mod scenes;
 
 pub use common::{Aabb, Color, Size};
 pub use engine::{Engine, MaterialHandle, MeshHandle, Node3DHandle, SceneHandle, SkyboxMode, TextureHandle};

@@ -2,6 +2,9 @@
 name = "luxa"
 version = "0.0.1"
 edition = "2024"
+description = "Luxa: a simple 3D engine for Rust"
+repository = "https://github.com/benc-uk/luxa"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.103"

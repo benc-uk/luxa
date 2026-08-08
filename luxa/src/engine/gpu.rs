@@ -64,7 +64,12 @@ pub(crate) fn create_depth_texture(device: &wgpu::Device, surf_config: &wgpu::Su
 }
 
 // Create a render pass with the given encoder and texture view
-pub(crate) fn create_render_pass<'a>(encoder: &'a mut wgpu::CommandEncoder, view: &wgpu::TextureView, depth_texture_view: Option<&wgpu::TextureView>) -> wgpu::RenderPass<'a> {
+pub(crate) fn create_render_pass<'a>(
+  encoder: &'a mut wgpu::CommandEncoder,
+  view: &wgpu::TextureView,
+  depth_texture_view: Option<&wgpu::TextureView>,
+  color: wgpu::Color,
+) -> wgpu::RenderPass<'a> {
   // Build the optional depth attachment up front so the descriptor below stays flat and readable.
   let depth_stencil_attachment = depth_texture_view.map(|depth_view| wgpu::RenderPassDepthStencilAttachment {
     view: depth_view,
@@ -82,7 +87,7 @@ pub(crate) fn create_render_pass<'a>(encoder: &'a mut wgpu::CommandEncoder, view
       resolve_target: None,
       depth_slice: None,
       ops: wgpu::Operations {
-        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+        load: wgpu::LoadOp::Clear(color),
         store: wgpu::StoreOp::Store,
       },
     })],
@@ -91,4 +96,13 @@ pub(crate) fn create_render_pass<'a>(encoder: &'a mut wgpu::CommandEncoder, view
     timestamp_writes: None,
     multiview_mask: None,
   })
+}
+
+pub fn wgpu_color_from_array(color: [f32; 3]) -> wgpu::Color {
+  wgpu::Color {
+    r: color[0] as f64,
+    g: color[1] as f64,
+    b: color[2] as f64,
+    a: 1.0,
+  }
 }

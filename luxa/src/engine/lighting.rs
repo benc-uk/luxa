@@ -15,16 +15,24 @@ pub(crate) struct LightUniform {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct LightsUniform {
+  pub(crate) ambient_color: [f32; 3],
+  pub(crate) ambient_intensity: f32,
+
   pub(crate) count: u32,
-  _padding: [u32; 3], // push the array to offset 16 (array align = 16)
+  pub(crate) ibl_enabled: u32,
+  _padding: [u32; 2],
+
   lights: [LightUniform; MAX_LIGHTS],
 }
 
 impl LightsUniform {
   pub(crate) fn new() -> Self {
     Self {
+      ambient_color: [0.0; 3],
+      ambient_intensity: 0.0,
       count: 0,
-      _padding: [0; 3],
+      ibl_enabled: 0,
+      _padding: [0; 2],
       lights: [LightUniform::zeroed(); MAX_LIGHTS],
     }
   }

@@ -55,7 +55,11 @@ struct Light {
 };
 
 struct Lights {
+    ambient_color: vec3f,
+    ambient_intensity: f32,
     count: u32,
+    ibl_enabled: u32,
+    _padding: vec2u,
     lights: array<Light, 16>,
 };
 
@@ -193,23 +197,31 @@ fn frag_main(in: VertexOutput) -> @location(0) vec4f {
     // Ambient occlusion ---
     let ao = get_occlusion(in.tex_coord);
 
-    // --- Split-sum IBL ambient (replaces flat AMBIENT_COLOR) ---
-    let F_amb = fresnel_schlick_roughness(NdotV, F0, roughness);
-    let kd = (vec3f(1.0) - F_amb) * (1.0 - metallic);
+    var ambient = albedo
+        * lights.ambient_color
+        * lights.ambient_intensity
+        * ao;
 
-    // Diffuse: irradiance in the surface-normal direction, tinted by albedo.
-    let irradiance = textureSample(t_irradiance, s_irradiance, N).rgb;
-    let diffuse = irradiance * albedo;
+    if lights.ibl_enabled != 0u {
+        // --- Split-sum IBL ambient (replaces flat AMBIENT_COLOR) ---
+        let F_amb = fresnel_schlick_roughness(NdotV, F0, roughness);
+        let kd = (vec3f(1.0) - F_amb) * (1.0 - metallic);
 
-    // Specular: prefiltered radiance along the reflection vector, at a mip chosen by
-    // roughness, combined with the pre-integrated BRDF (scale, bias) from the LUT.
-    let R = reflect(-V, N);
-    let max_prefilter_mip = f32(textureNumLevels(t_prefilter) - 1u);
-    let prefiltered = textureSampleLevel(t_prefilter, s_prefilter, R, roughness * max_prefilter_mip).rgb;
-    let brdf = textureSample(t_brdf_lut, s_brdf_lut, vec2f(NdotV, roughness)).rg;
-    let specular = prefiltered * (F0 * brdf.x + brdf.y);
+        // Diffuse: irradiance in the surface-normal direction, tinted by albedo.
+        let irradiance = textureSample(t_irradiance, s_irradiance, N).rgb;
+        let diffuse = irradiance * albedo;
 
-    var light_final = ((kd * diffuse + specular) * ao) + light_accum;
+        // Specular: prefiltered radiance along the reflection vector, at a mip chosen by
+        // roughness, combined with the pre-integrated BRDF (scale, bias) from the LUT.
+        let R = reflect(-V, N);
+        let max_prefilter_mip = f32(textureNumLevels(t_prefilter) - 1u);
+        let prefiltered = textureSampleLevel(t_prefilter, s_prefilter, R, roughness * max_prefilter_mip).rgb;
+        let brdf = textureSample(t_brdf_lut, s_brdf_lut, vec2f(NdotV, roughness)).rg;
+        let specular = prefiltered * (F0 * brdf.x + brdf.y);
+        ambient = (kd * diffuse + specular) * ao;
+    }
+
+    var light_final = ambient + light_accum;
     light_final = light_final + get_emissive(in.tex_coord);
 
     let tone_mapped = tonemap_aces(light_final * EXPOSURE);

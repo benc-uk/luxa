@@ -1,6 +1,7 @@
 use super::Engine;
 use crate::models::{Material, Mesh, Texture};
 use crate::nodes::Node3D;
+use crate::scenes::Scene;
 use glam::{Quat, Vec3};
 use slotmap::new_key_type;
 
@@ -13,7 +14,7 @@ new_key_type! {
 }
 
 impl Engine {
-  pub fn create_scene(&mut self) -> (SceneHandle, Node3DHandle) {
+  pub fn create_scene(&mut self) -> SceneHandle {
     let root_node = Node3D::new(
       &self.device,
       &self.bind_group_layouts.node,
@@ -21,11 +22,17 @@ impl Engine {
       glam::Quat::IDENTITY,
       glam::Vec3::new(1.0, 1.0, 1.0),
     );
-    let root_handle = self.nodes.insert(root_node);
-    let scene_handle = self.scenes.insert(root_handle);
-    log::info!("Created scene with handle {:?}", scene_handle);
 
-    (scene_handle, root_handle)
+    let root_handle = self.nodes.insert(root_node);
+    self.scenes.insert(Scene::new(root_handle))
+  }
+
+  pub fn scene(&self, handle: SceneHandle) -> &Scene {
+    self.scenes.get(handle).expect("Invalid scene handle")
+  }
+
+  pub fn scene_mut(&mut self, handle: SceneHandle) -> &mut Scene {
+    self.scenes.get_mut(handle).expect("Invalid scene handle")
   }
 
   pub fn create_texture(&mut self, path: &str) -> anyhow::Result<TextureHandle> {

@@ -129,11 +129,11 @@
     </style>
 
     <script type="module">
-      import init, { load_model, load_environment, set_skybox_mode } from './pkg/web_viewer.js';
+      import init, { load_model, change_environment, set_skybox_mode } from './pkg/web_viewer.js';
 
       await init();
       window.load_model = load_model;
-      window.load_environment = load_environment;
+      window.change_environment = change_environment;
       window.set_skybox_mode = set_skybox_mode;
     </script>
   </head>
@@ -160,19 +160,20 @@
       </div>
 
       <div class="setting">
-        <label for="bg-select">Environment</label>
+        <label for="bg-select">Environment & Ambient</label>
         <select id="bg-select">
           <option value="assets/ibl/colorful_studio_4k.hdr">Colourful Studio</option>
           <option value="assets/ibl/venice_sunset_4k.hdr">Venice Sunset</option>
           <option value="assets/ibl/ferndale_studio_04_4k.hdr">Ferndale Studio</option>
           <option value="assets/ibl/photo_studio_loft_hall_2k.hdr">Photo Studio</option>
           <option value="assets/ibl/veranda_2k.hdr">Veranda</option>
-          <option value="default">Default Placeholder</option>
+          <option value="assets/ibl/simple.hdr">Simple</option>
+          <option value="disabled">None (Flat Ambient)</option>
         </select>
       </div>
 
       <div class="setting">
-        <label for="skybox-mode-select">Skybox mode</label>
+        <label for="skybox-mode-select">Background</label>
         <select id="skybox-mode-select">
           <option value="env">Environment Map</option>
           <option value="env_blurred">Environment Blurred</option>
@@ -192,7 +193,7 @@
       });
 
       bgSelect.addEventListener('change', () => {
-        window.load_environment(bgSelect.value);
+        window.change_environment(bgSelect.value);
       });
 
       skyboxModeSelect.addEventListener('change', () => {

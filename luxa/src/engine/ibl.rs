@@ -11,7 +11,6 @@ use glam::Vec3;
 use wgpu::util::DeviceExt;
 
 const SHADER_IBL: &str = include_str!("../../shaders/bake_ibl.wgsl");
-const DEFAULT_ENVIRONMENT_HDR: &[u8] = include_bytes!("../../assets/default.hdr");
 
 // Consts for controlling the overall IBL
 const ENV_SIZE: u32 = 1024;
@@ -54,6 +53,30 @@ struct IblResources {
   pub(crate) prefilter_bind_group: wgpu::BindGroup,
 }
 
+impl IblResources {
+  fn black(device: &wgpu::Device, queue: &wgpu::Queue, layouts: &BindGroupLayouts) -> Self {
+    let env = Cubemap::new_render_target(device, 1, 1, wgpu::TextureFormat::Rgba16Float, "Black Environment Cube");
+    let irradiance = Cubemap::new_render_target(device, 1, 1, wgpu::TextureFormat::Rgba16Float, "Black Irradiance Cube");
+    let prefilter = Cubemap::new_render_target(device, 1, 1, wgpu::TextureFormat::Rgba16Float, "Black Prefilter Cube");
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Black IBL Clear") });
+    for cubemap in [&env, &irradiance, &prefilter] {
+      for face in 0..6 {
+        fill_face(&mut encoder, cubemap, face, wgpu::Color::BLACK);
+      }
+    }
+    queue.submit([encoder.finish()]);
+
+    Self {
+      env_bind_group: create_cubemap_bind_group(device, &layouts.env, &env.view, &env.sampler, "Black Environment Bind Group"),
+      irradiance_bind_group: create_cubemap_bind_group(device, &layouts.env, &irradiance.view, &irradiance.sampler, "Black Irradiance Bind Group"),
+      prefilter_bind_group: create_cubemap_bind_group(device, &layouts.env, &prefilter.view, &prefilter.sampler, "Black Prefilter Bind Group"),
+      irradiance,
+      prefilter,
+    }
+  }
+}
+
 // Device-owned bake infrastructure shared by every environment loaded by the engine.
 struct IblBaker {
   face_layout: wgpu::BindGroupLayout,
@@ -74,7 +97,7 @@ pub(crate) struct Ibl {
 impl Ibl {
   pub(crate) fn new(device: &wgpu::Device, queue: &wgpu::Queue, layouts: &BindGroupLayouts) -> Result<Self> {
     let baker = IblBaker::new(device, queue, layouts);
-    let resources = baker.bake(device, queue, DEFAULT_ENVIRONMENT_HDR, layouts)?;
+    let resources = IblResources::black(device, queue, layouts);
     Ok(Self { baker, resources })
   }
 
@@ -83,8 +106,8 @@ impl Ibl {
     Ok(())
   }
 
-  pub(crate) fn set_default_environment(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, layouts: &BindGroupLayouts) -> Result<()> {
-    self.set_environment(device, queue, DEFAULT_ENVIRONMENT_HDR, layouts)
+  pub(crate) fn clear_environment(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, layouts: &BindGroupLayouts) {
+    self.resources = IblResources::black(device, queue, layouts);
   }
 
   pub(crate) fn env_bind_group(&self) -> &wgpu::BindGroup {
@@ -273,12 +296,11 @@ fn face_uniforms(roughness: f32) -> [FaceUniform; 6] {
   })
 }
 
-// Simple helper to fill a cube face with a solid color. Used for debugging and testing.
-#[allow(dead_code)]
+// Fill one cubemap face with a solid colour.
 fn fill_face(encoder: &mut wgpu::CommandEncoder, cube: &crate::models::Cubemap, face: usize, color: wgpu::Color) {
   // The pass is dropped at the end of each iteration; dropping records the clear.
   let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-    label: Some("face clear"),
+    label: Some("Cubemap Face Clear"),
     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
       view: cube.face_view(0, face),
       resolve_target: None,

@@ -1,5 +1,6 @@
 // ============================================================================================
-// Generate the neutral HDR equirectangular environment bundled as Luxa's default IBL.
+// Generate a neutral default IBL (image-based lighting) environment map for use in the Luxa engine.
+// The generated environment map is a 1024x512 HDR image that can be used as a fallback
 // ============================================================================================
 
 use anyhow::{Context, Result};
@@ -14,7 +15,7 @@ fn main() -> Result<()> {
   let output_path = std::env::args_os()
     .nth(1)
     .map(PathBuf::from)
-    .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("./assets/default.hdr"));
+    .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../assets/ibl/simple.hdr"));
 
   let mut pixels = Vec::with_capacity(WIDTH * HEIGHT);
   for row in 0..HEIGHT {

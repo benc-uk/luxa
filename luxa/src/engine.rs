@@ -12,6 +12,7 @@ use web_time::Instant;
 
 use crate::models::{Material, MaterialFallbacks, Mesh, Texture, Vertex};
 use crate::nodes::Node3D;
+use crate::scenes::Scene;
 use gpu::{create_depth_texture, init};
 use ibl::Ibl;
 pub(crate) use lighting::LightsUniform;
@@ -89,7 +90,7 @@ pub struct Engine {
   skybox: skybox::Skybox,
 
   // Arenas for storing resources, so we can return handles to them.
-  scenes: SlotMap<SceneHandle, Node3DHandle>,
+  scenes: SlotMap<SceneHandle, Scene>,
   nodes: SlotMap<Node3DHandle, Node3D>,
   meshes: SlotMap<MeshHandle, Mesh>,
   materials: SlotMap<MaterialHandle, Material>,
@@ -237,11 +238,9 @@ impl Engine {
     Ok(())
   }
 
-  pub fn set_default_environment(&mut self) -> anyhow::Result<()> {
-    self.ibl.set_default_environment(&self.device, &self.queue, &self.bind_group_layouts)?;
+  pub fn clear_environment(&mut self) {
+    self.ibl.clear_environment(&self.device, &self.queue, &self.bind_group_layouts);
     self.lights_bind_group = create_lights_bind_group(&self.device, &self.bind_group_layouts.lights, &self.lights_uniform_buffer, &self.ibl);
-
-    Ok(())
   }
 
   pub fn skybox_set_mode(&mut self, mode: SkyboxMode, mip_level: f32) {

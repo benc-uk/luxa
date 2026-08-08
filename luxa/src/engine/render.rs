@@ -1,7 +1,7 @@
 use std::vec;
 
 use super::{Engine, Node3DHandle, SceneHandle, gpu};
-use crate::helpers;
+use crate::{engine::gpu::wgpu_color_from_array, helpers};
 use glam::Mat4;
 
 pub(crate) struct BindGroupLayouts {
@@ -40,7 +40,7 @@ impl Engine {
     self.frame_uniform.time
   }
 
-  pub fn render(&mut self, scene: SceneHandle, camera_node: Node3DHandle) -> anyhow::Result<()> {
+  pub fn render(&mut self, scene_hdl: SceneHandle, camera_node: Node3DHandle) -> anyhow::Result<()> {
     // We can't render unless the surface is configured
     if !self.is_surface_configured {
       return Ok(());
@@ -50,10 +50,22 @@ impl Engine {
       material.upload_gpu(&self.device, &self.queue, &self.textures);
     }
 
-    // Root node for rendering all nodes in this scene
-    let root = *self.scenes.get(scene).expect("invalid scene");
+    // Grab what we need from the scene, including the root node and ambient light settings
+    let (root, background_color, ambient_color, ambient_intensity, ibl_enabled) = {
+      let scene = self.scene(scene_hdl);
+      (
+        scene.root(),
+        scene.background_color(),
+        scene.ambient_color(),
+        scene.ambient_intensity(),
+        scene.ibl_enabled(),
+      )
+    };
 
     self.lights_uniform.count = 0;
+    self.lights_uniform.ambient_color = ambient_color;
+    self.lights_uniform.ambient_intensity = ambient_intensity;
+    self.lights_uniform.ibl_enabled = if ibl_enabled { 1 } else { 0 };
     // List of nodes to render, with their world matrices. We will fill this by traversing the scene graph.
     let mut render_list: Vec<Node3DHandle> = Vec::new();
     // Stack starts with the root node and identity world matrix
@@ -136,22 +148,23 @@ impl Engine {
     // Begin rendering commands
     let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
 
-    // Whole render pass is contained in this block, so it is dropped (releasing
-    // its &mut borrow of the encoder) before we call encoder.finish() below.
+    // Whole render pass is contained in this block, so it is dropped (releasing its &mut borrow of the encoder)
+    // before we call encoder.finish() below.
     {
-      let mut render_pass = gpu::create_render_pass(&mut encoder, &view, Some(&self.depth_texture_view));
+      let bg_color = wgpu_color_from_array(background_color);
+
+      let mut render_pass = gpu::create_render_pass(&mut encoder, &view, Some(&self.depth_texture_view), bg_color);
       render_pass.set_bind_group(0, &self.frame_cam_bind_group, &[]);
       render_pass.set_bind_group(3, &self.lights_bind_group, &[]);
-      // render_pass.set_bind_group(4, &self.ibl.render_bind_group, &[]);
 
       // Place to store all blended meshes, which we will render after all opaque meshes
       let mut blended_meshes = vec![];
 
-      // Walk the scene graph: each mesh-carrying node draws its meshes, looking up each
-      // mesh's material by handle from the engine's arenas.
+      // Walk the scene graph: each mesh-carrying node draws its meshes,
       for node in render_list.iter().map(|hdl| &self.nodes[*hdl]) {
         render_pass.set_bind_group(2, node.get_bind_group(), &[]);
 
+        // Looking up each mesh's material by handle from the engine's arenas.
         for &mesh_handle in node.mesh_handles() {
           let mesh = self.meshes.get(mesh_handle).expect("Invalid mesh handle");
           let material = self.materials.get(mesh.material_handle()).expect("Invalid material handle");
@@ -168,8 +181,6 @@ impl Engine {
       self.skybox.render(&mut render_pass, &self);
 
       // 🔥 TODO: Sort blended meshes by depth from camera
-
-      //log::error!("Rendering {} blended meshes", blended_meshes.len());
 
       // Render all blended meshes after all opaque meshes, so they are drawn on top of the opaque ones.
       for (node, mesh, material) in blended_meshes {

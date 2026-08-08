@@ -77,7 +77,7 @@ pub fn start() -> Result<(), JsValue> {
 
     build_scene();
     load_model(DEFAULT_MODEL).await;
-    load_environment(DEFAULT_ENVIRONMENT).await;
+    change_environment(DEFAULT_ENVIRONMENT).await;
 
     set_message("");
     start_render_loop();
@@ -120,12 +120,16 @@ pub async fn load_model(path: &str) {
 }
 
 #[wasm_bindgen]
-pub async fn load_environment(path: &str) {
+pub async fn change_environment(path: &str) {
   set_message("🌅 Loading environment & baking IBL...");
-  let hdr_bytes = if path == "default" {
+  let hdr_bytes = if path == "disabled" {
     None
   } else {
     Some(fetch_bytes(path).await.expect("failed to fetch HDR"))
+  };
+
+  let Some(scene_handle) = SCENE.with(|cell| cell.get()) else {
+    return;
   };
 
   ENGINE.with(|cell| {
@@ -133,10 +137,17 @@ pub async fn load_environment(path: &str) {
     let Some(engine) = engine.as_mut() else { return };
 
     match hdr_bytes.as_deref() {
-      Some(hdr_bytes) => engine.set_environment(hdr_bytes),
-      None => engine.set_default_environment(),
+      Some(hdr_bytes) => {
+        engine.set_environment(hdr_bytes).expect("failed to set environment");
+        engine.scene_mut(scene_handle).set_ibl_enabled(true);
+      }
+      None => {
+        engine.clear_environment();
+        let scene = engine.scene_mut(scene_handle);
+        scene.set_ibl_enabled(false);
+        scene.set_ambient_intensity(0.2);
+      }
     }
-    .expect("failed to set environment");
   });
 
   set_message("");
@@ -144,7 +155,6 @@ pub async fn load_environment(path: &str) {
 
 #[wasm_bindgen]
 pub async fn set_skybox_mode(mode: &str) {
-  log::info!("setting skybox mode to {mode}");
   ENGINE.with(|cell| {
     if let Some(engine) = cell.borrow_mut().as_mut() {
       match mode {
@@ -163,13 +173,17 @@ pub async fn set_skybox_mode(mode: &str) {
 fn build_scene() {
   ENGINE.with(|cell| {
     if let Some(engine) = cell.borrow_mut().as_mut() {
-      let (scene, root) = engine.create_scene();
+      let scene_hdl = engine.create_scene();
+      let scene = engine.scene_mut(scene_hdl);
+      let root = scene.root();
+      scene.set_background_color([0.1, 0.1, 0.1]);
+      scene.set_ambient_intensity(0.3);
 
       let camera = engine.create_camera_node(root, vec3(0.0, 1.0, 4.0), vec3(0.0, 0.0, 0.0), glam::Vec3::ONE, 70.0, 0.1, 200.0);
       engine.skybox_set_mode(luxa::SkyboxMode::EnvironmentMap, 0.0);
 
       ROOT_NODE.with(|cell| cell.set(Some(root)));
-      SCENE.with(|cell| cell.set(Some(scene)));
+      SCENE.with(|cell| cell.set(Some(scene_hdl)));
       CAMERA.with(|cell| cell.set(Some(camera)));
     }
   });
