@@ -6,12 +6,12 @@
 // ===================================================================================================
 mod js_helpers;
 
-use glam::Vec3;
-use glam::vec3;
 use js_helpers::{add_listener, fetch_bytes};
 use luxa::Engine;
 use luxa::ModelDescriptor;
 use luxa::SceneDescriptor;
+
+use luxa::glam::{EulerRot, Quat, Vec3, vec3};
 use std::cell::{Cell, RefCell};
 use wasm_bindgen::prelude::*;
 use web_sys::{PointerEvent, WheelEvent};
@@ -47,8 +47,8 @@ thread_local! {
   });
 }
 
-const DEFAULT_MODEL: &str = "assets/models/khronos/Duck.glb";
-const DEFAULT_ENVIRONMENT: &str = "assets/ibl/simple.hdr";
+const DEFAULT_MODEL: &str = "assets/models/khronos/PotOfCoals.glb";
+const DEFAULT_ENVIRONMENT: &str = "assets/ibl/colorful_studio_4k.hdr";
 
 // Marks this as the module's entry point
 #[wasm_bindgen(start)]
@@ -82,7 +82,7 @@ pub fn start() -> Result<(), JsValue> {
     change_environment(DEFAULT_ENVIRONMENT).await;
 
     set_message("");
-    start_render_loop();
+    render_loop();
   });
 
   Ok(())
@@ -109,7 +109,7 @@ pub async fn load_model(path: &str) {
       let size = aabb.size();
       let size_avg = (size.x + size.y + size.z) / 3.0;
       let center = aabb.center();
-      let scale = glam::vec3(1.0 / size_avg, 1.0 / size_avg, 1.0 / size_avg);
+      let scale = vec3(1.0 / size_avg, 1.0 / size_avg, 1.0 / size_avg);
 
       // Move the model so that its center is at the origin, and scale it to fit in a 1x1x1 cube
       engine.node_mut(model).set_scale(scale);
@@ -179,7 +179,15 @@ fn build_scene() {
       scene.set_background_color([0.1, 0.1, 0.1]);
       scene.set_ambient_intensity(0.3);
 
-      let camera = engine.create_camera(scene_hdl, luxa::CameraDescriptor::default()).unwrap();
+      let camera = engine
+        .create_camera(
+          scene_hdl,
+          luxa::CameraDescriptor {
+            position: vec3(0.0, 0.0, 1.6),
+            ..Default::default()
+          },
+        )
+        .unwrap();
       engine.skybox_set_mode(luxa::SkyboxMode::EnvironmentMap, 0.0);
 
       SCENE.with(|cell| cell.set(Some(scene_hdl)));
@@ -293,8 +301,8 @@ fn drop_pointer(e: PointerEvent) {
   });
 }
 
-// Start the render loop. This function schedules itself to be called on each animation frame.
-fn start_render_loop() {
+// The render loop. This function schedules itself to be called on each animation frame.
+fn render_loop() {
   ENGINE.with(|cell| {
     if let Some(engine) = cell.borrow_mut().as_mut() {
       engine.update(); // advance the time uniform so animation progresses
@@ -302,12 +310,15 @@ fn start_render_loop() {
       let scene = SCENE.with(|cell| cell.get());
       let camera = CAMERA.with(|cell| cell.get());
       if let (Some(scene), Some(camera)) = (scene, camera) {
+        // let rotation = Quat::from_rotation_y(engine.t() * 2.0);
+        // engine.node_mut(camera).set_rotation(rotation);
+
         // Get the camera position from the orbit camera state and update the camera node.
         let (yaw, pitch, radius) = CAM_STATE.with(|c| {
           let c = c.borrow();
           (c.yaw, c.pitch, c.radius)
         });
-        let dir = glam::Quat::from_euler(glam::EulerRot::YXZ, yaw, pitch, 0.0) * glam::Vec3::Z;
+        let dir = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0) * Vec3::Z;
         engine.node_mut(camera).set_position(dir * radius);
         engine.node_mut(camera).look_at(vec3(0.0, 0.0, 0.0), Vec3::Y);
 
@@ -321,7 +332,7 @@ fn start_render_loop() {
 
   // Schedule the next frame. `once_into_js` hands the browser a one-shot JS callback (freed after it fires),
   // and each invocation re-schedules the next, so the loop runs until the page closes.
-  let callback = Closure::once_into_js(start_render_loop);
+  let callback = Closure::once_into_js(render_loop);
   web_sys::window()
     .expect("no window")
     .request_animation_frame(callback.unchecked_ref())

@@ -66,7 +66,7 @@ fn frag_irradiance(in: VertexOutput) -> @location(0) vec4f {
     // Tuning: increase to 2048 or 4096 if bright HDRs still produce directional noise.
     // Bake cost scales linearly with this value; 1024 is about 6.3 million samples for
     // the complete 32x32 irradiance cubemap.
-    let SAMPLE_COUNT = 1024u;
+    let SAMPLE_COUNT = 2048u;
     let env_size = f32(textureDimensions(t_env, 0).x);
     let max_env_mip = f32(textureNumLevels(t_env) - 1u);
     var irradiance = vec3f(0.0);
@@ -77,7 +77,7 @@ fn frag_irradiance(in: VertexOutput) -> @location(0) vec4f {
         let lod = clamp(compute_irradiance_lod(pdf, env_size, f32(SAMPLE_COUNT)), 0.0, max_env_mip);
         irradiance += textureSampleLevel(t_env, s_env, world, lod).rgb;
     }
-    irradiance = PI * irradiance / f32(SAMPLE_COUNT);
+    irradiance /= f32(SAMPLE_COUNT);
     return vec4f(irradiance, 1.0);
 }
 

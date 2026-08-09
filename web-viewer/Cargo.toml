@@ -16,7 +16,6 @@ console_log = "1.0"
 console_error_panic_hook = "0.1"
 luxa = { path = "../luxa" }
 wasm-bindgen-futures = "0.4.76"
-glam = "0.33.2"
 gloo-net = "0.6"
 
 [dependencies.web-sys]

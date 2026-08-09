@@ -1,5 +1,6 @@
 mod camera;
 
+use crate::Transform;
 use crate::common::Aabb;
 use crate::engine::{MeshHandle, NodeHandle};
 use crate::models::Mesh;
@@ -19,9 +20,7 @@ struct NodeUniform {
 pub struct Node {
   kind: NodeKind,
 
-  position: Vec3,
-  rotation: Quat,
-  scale: Vec3,
+  transform: Transform,
   local_matrix: Mat4,
   world_matrix: Mat4,
   parent: Option<NodeHandle>,
@@ -54,7 +53,7 @@ pub(crate) struct LightData {
 }
 
 impl Node {
-  pub(crate) fn new(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, position: Vec3, rotation: Quat, scale: Vec3) -> Self {
+  pub(crate) fn new(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, transform: Transform) -> Self {
     let uniform = NodeUniform {
       model_matrix: Mat4::IDENTITY.to_cols_array(), // Updated below
       normal_matrix: Mat4::IDENTITY.to_cols_array(),
@@ -77,10 +76,8 @@ impl Node {
 
     let mut node = Node {
       kind: NodeKind::Empty,
-      position,
-      rotation,
-      scale,
-      local_matrix: Mat4::IDENTITY, // Also updated below
+      transform,
+      local_matrix: Mat4::IDENTITY,
       world_matrix: Mat4::IDENTITY,
       parent: None,
       children: None,
@@ -105,7 +102,7 @@ impl Node {
     rotation: Quat,
     scale: Vec3,
   ) -> Self {
-    let mut node = Self::new(device, bind_group_layout, position, rotation, scale);
+    let mut node = Self::new(device, bind_group_layout, Transform { position, rotation, scale });
 
     // Compute the AABB and center of the node based on its meshes. This is useful for culling, camera framing, etc.
     // The handles are just keys, so we look each mesh up in the engine's mesh arena to read its local AABB.
@@ -130,7 +127,7 @@ impl Node {
   pub(crate) fn new_light(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, position: Vec3, color: Vec3, intensity: f32) -> Self {
     let rotation = Quat::IDENTITY;
     let scale = Vec3::ONE;
-    let mut node = Self::new(device, bind_group_layout, position, rotation, scale);
+    let mut node = Self::new(device, bind_group_layout, Transform { position, rotation, scale });
     node.kind = NodeKind::Light(LightData { color, intensity });
     node
   }
@@ -164,7 +161,7 @@ impl Node {
   }
 
   fn update(&mut self) {
-    self.local_matrix = Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.position);
+    self.local_matrix = Mat4::from_scale_rotation_translation(self.transform.scale, self.transform.rotation, self.transform.position);
   }
 
   pub fn local_matrix(&self) -> Mat4 {
@@ -181,12 +178,12 @@ impl Node {
   }
 
   pub fn set_position(&mut self, position: Vec3) {
-    self.position = position;
+    self.transform.position = position;
     self.update();
   }
 
   pub fn set_rotation(&mut self, rotation: Quat) {
-    self.rotation = rotation;
+    self.transform.rotation = rotation;
 
     if let NodeKind::Camera(camera) = &mut self.kind {
       camera.orientation = CameraOrientation::NodeRotation;
@@ -207,30 +204,30 @@ impl Node {
     }
 
     // For non-camera nodes, we can just set the rotation to look at the target point.
-    let direction = target - self.position;
+    let direction = target - self.transform.position;
     if direction.length_squared() <= 1e-12 {
       return;
     }
 
-    self.rotation = Quat::from_rotation_arc(Vec3::NEG_Z, direction.normalize());
+    self.transform.rotation = Quat::from_rotation_arc(Vec3::NEG_Z, direction.normalize());
     self.update();
   }
 
   pub fn set_scale(&mut self, scale: Vec3) {
-    self.scale = scale;
+    self.transform.scale = scale;
     self.update();
   }
 
   pub fn position(&self) -> Vec3 {
-    self.position
+    self.transform.position
   }
 
   pub fn rotation(&self) -> Quat {
-    self.rotation
+    self.transform.rotation
   }
 
   pub fn scale(&self) -> Vec3 {
-    self.scale
+    self.transform.scale
   }
 
   pub(crate) fn get_bind_group(&self) -> &wgpu::BindGroup {

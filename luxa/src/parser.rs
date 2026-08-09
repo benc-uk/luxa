@@ -325,6 +325,7 @@ fn parse_primitive(primitive: gltf::Primitive<'_>, transform: Mat4, buffers: &[g
   if indices.len() % 3 != 0 {
     bail!("triangle-list primitive has {} indices, which is not divisible by 3", indices.len());
   }
+
   if let Some(index) = indices.iter().copied().find(|index| usize::from(*index) >= positions.len()) {
     bail!("index {index} is outside the primitive's {} vertices", positions.len());
   }
@@ -342,13 +343,17 @@ fn parse_primitive(primitive: gltf::Primitive<'_>, transform: Mat4, buffers: &[g
       if linear_transform.determinant().abs() <= f32::EPSILON {
         bail!("cannot transform normals through a non-invertible node transform");
       }
+
       let normal_transform = linear_transform.inverse().transpose();
       let normals = normals.map(|normal| (normal_transform * Vec3::from(normal)).normalize_or_zero()).collect::<Vec<_>>();
+
       if normals.len() != positions.len() {
         bail!("NORMAL attribute has {} values but POSITION has {}", normals.len(), positions.len());
       }
+
       normals
     }
+
     None => generate_normals(&positions, &indices),
   };
 
@@ -358,19 +363,33 @@ fn parse_primitive(primitive: gltf::Primitive<'_>, transform: Mat4, buffers: &[g
       if tex_coords.len() != positions.len() {
         bail!("TEXCOORD_0 attribute has {} values but POSITION has {}", tex_coords.len(), positions.len());
       }
+
       tex_coords
     }
+
     None => vec![[0.0, 0.0]; positions.len()],
   };
 
   let tangents = match reader.read_tangents() {
     Some(tangents) => {
-      let tangents = tangents.map(|tangent| tangent.into()).collect::<Vec<_>>();
+      let linear_transform = Mat3::from_mat4(transform);
+      let handedness = if reflected { -1.0 } else { 1.0 };
+
+      let tangents = tangents
+        .map(|tangent| {
+          let transformed = (linear_transform * Vec3::new(tangent[0], tangent[1], tangent[2])).normalize_or_zero();
+
+          [transformed.x, transformed.y, transformed.z, tangent[3] * handedness]
+        })
+        .collect::<Vec<_>>();
+
       if tangents.len() != positions.len() {
         bail!("TANGENT attribute has {} values but POSITION has {}", tangents.len(), positions.len());
       }
+
       tangents
     }
+
     None => generate_tangents(&positions, &normals, &tex_coords, &indices),
   };
 

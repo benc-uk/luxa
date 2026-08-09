@@ -41,7 +41,9 @@ impl CameraData {
 #[derive(Debug, Clone)]
 pub struct CameraDescriptor {
   pub parent: Option<NodeHandle>,
-  pub transform: Transform,
+  pub position: Vec3,
+  pub rotation: Quat,
+  pub scale: Vec3,
   pub orientation: CameraOrientation,
   pub fov_degrees: f32,
   pub near_plane: f32,
@@ -52,7 +54,9 @@ impl Default for CameraDescriptor {
   fn default() -> Self {
     Self {
       parent: None,
-      transform: Transform::default(),
+      position: Vec3::ZERO,
+      rotation: Quat::IDENTITY,
+      scale: Vec3::ONE,
       orientation: NodeRotation,
       fov_degrees: 60.0,
       near_plane: 0.1,
@@ -73,10 +77,15 @@ impl Node {
     let fov_degrees = desc.fov_degrees;
     let near_plane = desc.near_plane;
     let far_plane = desc.far_plane;
-    let trans = desc.transform;
+    let transform = Transform {
+      position: desc.position,
+      rotation: desc.rotation,
+      scale: desc.scale,
+    };
 
-    let mut node = Self::new(device, bind_group_layout, trans.position, trans.rotation, trans.scale);
+    let mut node = Self::new(device, bind_group_layout, transform);
 
+    // Extra node data for camera nodes is stored in the NodeKind enum variant.
     node.kind = NodeKind::Camera(CameraData {
       fovy: fov_degrees,
       znear: near_plane,

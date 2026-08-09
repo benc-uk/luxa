@@ -1,5 +1,6 @@
 use super::Engine;
 use crate::CameraDescriptor;
+use crate::Transform;
 use crate::models::{Material, Mesh, Texture};
 use crate::nodes::Node;
 use crate::scenes::{Scene, SceneDescriptor};
@@ -34,13 +35,7 @@ impl From<LightHandle> for NodeHandle {
 
 impl Engine {
   pub fn create_scene(&mut self, desc: SceneDescriptor) -> SceneHandle {
-    let root_node = Node::new(
-      &self.device,
-      &self.bind_group_layouts.node,
-      glam::Vec3::ZERO,
-      glam::Quat::IDENTITY,
-      glam::Vec3::new(1.0, 1.0, 1.0),
-    );
+    let root_node = Node::new(&self.device, &self.bind_group_layouts.node, crate::Transform::default());
 
     let root_handle = self.nodes.insert(root_node);
     self.scenes.insert(Scene::new(root_handle, desc))
@@ -89,7 +84,7 @@ impl Engine {
   }
 
   pub fn create_node(&mut self, parent: NodeHandle, position: Vec3, rotation: Quat, scale: Vec3) -> NodeHandle {
-    let node = Node::new(&self.device, &self.bind_group_layouts.node, position, rotation, scale);
+    let node = Node::new(&self.device, &self.bind_group_layouts.node, Transform { position, rotation, scale });
     self.attach(node, parent)
   }
 

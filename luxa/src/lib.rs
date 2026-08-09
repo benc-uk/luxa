@@ -20,3 +20,6 @@ pub use scenes::SceneDescriptor;
 
 // Handles
 pub use engine::{MaterialHandle, MeshHandle, NodeHandle, SceneHandle, TextureHandle};
+
+// Re-exports for convenience
+pub use glam;
