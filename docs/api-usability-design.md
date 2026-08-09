@@ -128,7 +128,7 @@ pub struct SceneDescriptor {
     pub ibl_enabled: bool,
     }
 
-    #[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default)]
     pub struct NodeDescriptor {
       pub parent: Option<NodeHandle>,
   pub transform: Transform,

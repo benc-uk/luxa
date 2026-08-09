@@ -20,7 +20,7 @@ pub use skybox::SkyboxMode;
 
 use pipelines::Pipelines;
 use render::BindGroupLayouts;
-pub use resources::{MaterialHandle, MeshHandle, NodeHandle, SceneHandle, TextureHandle};
+pub use resources::{MaterialHandle, MeshHandle, NodeDescriptor, NodeHandle, SceneHandle, TextureHandle};
 use wgpu::util::DeviceExt;
 
 #[repr(C)]

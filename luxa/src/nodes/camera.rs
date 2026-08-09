@@ -10,6 +10,15 @@ pub(crate) struct CameraData {
   pub orientation: CameraOrientation,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct CameraHandle(NodeHandle);
+
+impl From<CameraHandle> for NodeHandle {
+  fn from(handle: CameraHandle) -> Self {
+    handle.0
+  }
+}
+
 impl CameraData {
   // This is forwarded from Node::view_proj, which is called from Engine::render_scene.
   // It needs the world position and rotation of the camera node, which is why those are passed in.
@@ -60,7 +69,7 @@ impl Default for CameraDescriptor {
       orientation: NodeRotation,
       fov_degrees: 60.0,
       near_plane: 0.1,
-      far_plane: 1000.0,
+      far_plane: 100.0,
     }
   }
 }

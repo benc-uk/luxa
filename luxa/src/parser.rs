@@ -13,6 +13,7 @@ use crate::{
   SceneHandle,
   engine::{Engine, NodeHandle, TextureHandle},
   models::{Mesh, ModelDescriptor, Vertex},
+  nodes::MeshNodeDescriptor,
 };
 
 struct ParsedGltf {
@@ -53,24 +54,24 @@ struct ParsedPrimitive {
 
 impl Engine {
   /// Loads a `.gltf` or `.glb` file and attaches its flattened geometry below `parent`.
-  pub fn load_gltf(&mut self, scene: SceneHandle, path: &str, descriptor: ModelDescriptor) -> Result<NodeHandle> {
+  pub fn load_model(&mut self, scene: SceneHandle, path: &str, descriptor: ModelDescriptor) -> Result<NodeHandle> {
     let (document, buffers, images) = gltf::import(path).with_context(|| format!("failed to import glTF file {path}"))?;
     let parsed = parse_document(&document, &buffers, images)?;
 
     let parent = descriptor.parent.unwrap_or_else(|| self.scene(scene).root());
-    self.add_parsed_gltf(parsed, parent)
+    self.add_parsed_gltf(parsed, scene, parent, descriptor)
   }
 
   /// Loads a self-contained GLB or glTF byte slice and attaches its flattened geometry below `parent`.
-  pub fn load_gltf_bytes(&mut self, scene: SceneHandle, bytes: &[u8], descriptor: ModelDescriptor) -> Result<NodeHandle> {
+  pub fn load_model_bytes(&mut self, scene: SceneHandle, bytes: &[u8], descriptor: ModelDescriptor) -> Result<NodeHandle> {
     let (document, buffers, images) = gltf::import_slice(bytes).context("failed to import glTF bytes")?;
     let parsed = parse_document(&document, &buffers, images)?;
 
     let parent = descriptor.parent.unwrap_or_else(|| self.scene(scene).root());
-    self.add_parsed_gltf(parsed, parent)
+    self.add_parsed_gltf(parsed, scene, parent, descriptor)
   }
 
-  fn add_parsed_gltf(&mut self, parsed: ParsedGltf, parent: NodeHandle) -> Result<NodeHandle> {
+  fn add_parsed_gltf(&mut self, parsed: ParsedGltf, scene: SceneHandle, parent: NodeHandle, descriptor: ModelDescriptor) -> Result<NodeHandle> {
     let ParsedGltf { materials, primitives, images } = parsed;
     let mut material_handles = Vec::with_capacity(materials.len());
 
@@ -135,10 +136,17 @@ impl Engine {
     for primitive in primitives {
       let material = primitive.material_index.map_or_else(|| self.default_material(), |index| material_handles[index]);
       let mesh = Mesh::new(self, primitive.vertices, primitive.indices, material);
-      mesh_handles.push(self.add_mesh(mesh));
+      mesh_handles.push(self.store_mesh(mesh));
     }
 
-    Ok(self.create_mesh_node(parent, mesh_handles, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE))
+    Ok(self.create_mesh(
+      scene,
+      MeshNodeDescriptor {
+        parent: Some(parent),
+        transform: descriptor.transform,
+        meshes: mesh_handles,
+      },
+    ))
   }
 }
 

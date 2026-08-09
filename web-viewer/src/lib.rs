@@ -101,7 +101,7 @@ pub async fn load_model(path: &str) {
         engine.remove_node(model);
       }
 
-      let model = engine.load_gltf_bytes(scene, &model_bytes, ModelDescriptor::default()).unwrap();
+      let model = engine.load_model_bytes(scene, &model_bytes, ModelDescriptor::default()).unwrap();
       MODEL_NODE.with(|cell| cell.set(Some(model)));
 
       // Get the node AABB size and use that to scale the model to 1,1,1
@@ -142,6 +142,7 @@ pub async fn change_environment(path: &str) {
         engine.set_environment(hdr_bytes).expect("failed to set environment");
         engine.scene_mut(scene_handle).set_ibl_enabled(true);
       }
+
       None => {
         engine.clear_environment();
         let scene = engine.scene_mut(scene_handle);

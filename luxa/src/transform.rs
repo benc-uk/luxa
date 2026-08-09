@@ -26,7 +26,7 @@ impl Transform {
     }
   }
 
-  pub fn from_pos(x: f32, y: f32, z: f32) -> Self {
+  pub fn p(x: f32, y: f32, z: f32) -> Self {
     Self {
       position: Vec3::new(x, y, z),
       rotation: Quat::IDENTITY,
@@ -42,11 +42,27 @@ impl Transform {
     }
   }
 
+  pub fn r(x: f32, y: f32, z: f32) -> Self {
+    Self {
+      position: Vec3::ZERO,
+      rotation: Quat::from_euler(glam::EulerRot::XYZ, x, y, z),
+      scale: Vec3::ONE,
+    }
+  }
+
   pub fn from_scale(scale: Vec3) -> Self {
     Self {
       position: Vec3::ZERO,
       rotation: Quat::IDENTITY,
       scale,
+    }
+  }
+
+  pub fn s(x: f32, y: f32, z: f32) -> Self {
+    Self {
+      position: Vec3::ZERO,
+      rotation: Quat::IDENTITY,
+      scale: Vec3::new(x, y, z),
     }
   }
 

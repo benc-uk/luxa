@@ -268,6 +268,6 @@ impl MeshBuilder {
 
     log::info!("MeshBuilder built mesh with blah and blah");
 
-    engine.add_mesh(mesh)
+    engine.store_mesh(mesh)
   }
 }

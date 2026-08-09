@@ -1,14 +1,18 @@
 mod camera;
+mod light;
+mod mesh;
 
 use crate::Transform;
 use crate::common::Aabb;
 use crate::engine::{MeshHandle, NodeHandle};
-use crate::models::Mesh;
 use glam::{Mat4, Quat, Vec3};
-use slotmap::SlotMap;
+pub(crate) use light::LightData;
 use wgpu::util::DeviceExt;
 
-pub use camera::{CameraDescriptor, CameraOrientation};
+pub use camera::{CameraDescriptor, CameraHandle, CameraOrientation};
+pub use light::{LightDescriptor, LightHandle};
+pub(crate) use mesh::MeshData;
+pub use mesh::MeshNodeDescriptor;
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -41,15 +45,6 @@ pub(crate) enum NodeKind {
   Mesh(MeshData),
   Camera(camera::CameraData),
   Light(LightData),
-}
-
-pub(crate) struct MeshData {
-  pub mesh_handles: Vec<MeshHandle>,
-}
-
-pub(crate) struct LightData {
-  pub color: Vec3,
-  pub intensity: f32,
 }
 
 impl Node {
@@ -90,45 +85,6 @@ impl Node {
     };
 
     node.update();
-    node
-  }
-
-  pub(crate) fn new_mesh(
-    device: &wgpu::Device,
-    bind_group_layout: &wgpu::BindGroupLayout,
-    mesh_arena: &SlotMap<MeshHandle, Mesh>,
-    mesh_handles: Vec<MeshHandle>,
-    position: Vec3,
-    rotation: Quat,
-    scale: Vec3,
-  ) -> Self {
-    let mut node = Self::new(device, bind_group_layout, Transform { position, rotation, scale });
-
-    // Compute the AABB and center of the node based on its meshes. This is useful for culling, camera framing, etc.
-    // The handles are just keys, so we look each mesh up in the engine's mesh arena to read its local AABB.
-    let mut aabb: Option<Aabb> = None;
-    for handle in &mesh_handles {
-      if let Some(mesh) = mesh_arena.get(*handle) {
-        let mesh_aabb = mesh.aabb();
-        aabb = Some(match aabb {
-          Some(current_aabb) => current_aabb.union(&mesh_aabb),
-          None => mesh_aabb,
-        });
-      }
-    }
-
-    node.aabb = aabb;
-    node.center = aabb.map(|aabb| aabb.center());
-
-    node.kind = NodeKind::Mesh(MeshData { mesh_handles });
-    node
-  }
-
-  pub(crate) fn new_light(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, position: Vec3, color: Vec3, intensity: f32) -> Self {
-    let rotation = Quat::IDENTITY;
-    let scale = Vec3::ONE;
-    let mut node = Self::new(device, bind_group_layout, Transform { position, rotation, scale });
-    node.kind = NodeKind::Light(LightData { color, intensity });
     node
   }
 
@@ -243,7 +199,7 @@ impl Node {
 
   pub(crate) fn mesh_handles(&self) -> &[MeshHandle] {
     match &self.kind {
-      NodeKind::Mesh(data) => &data.mesh_handles,
+      NodeKind::Mesh(data) => &data.meshes,
       _ => &[], // Empty / Camera
     }
   }
@@ -261,13 +217,6 @@ impl Node {
 
   pub(crate) fn is_mesh(&self) -> bool {
     matches!(self.kind, NodeKind::Mesh(_))
-  }
-
-  pub(crate) fn light_data(&self) -> Option<&LightData> {
-    match &self.kind {
-      NodeKind::Light(data) => Some(data),
-      _ => None,
-    }
   }
 
   pub fn aabb(&self) -> Option<Aabb> {

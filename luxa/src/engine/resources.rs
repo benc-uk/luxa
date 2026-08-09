@@ -2,6 +2,8 @@ use super::Engine;
 use crate::CameraDescriptor;
 use crate::Transform;
 use crate::models::{Material, Mesh, Texture};
+use crate::nodes::LightDescriptor;
+use crate::nodes::MeshNodeDescriptor;
 use crate::nodes::Node;
 use crate::scenes::{Scene, SceneDescriptor};
 use glam::{Quat, Vec3};
@@ -15,22 +17,10 @@ new_key_type! {
   pub struct SceneHandle;
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct CameraHandle(NodeHandle);
-
-impl From<CameraHandle> for NodeHandle {
-  fn from(handle: CameraHandle) -> Self {
-    handle.0
-  }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct LightHandle(NodeHandle);
-
-impl From<LightHandle> for NodeHandle {
-  fn from(handle: LightHandle) -> Self {
-    handle.0
-  }
+#[derive(Debug, Clone, Default)]
+pub struct NodeDescriptor {
+  pub parent: Option<NodeHandle>,
+  pub transform: Transform,
 }
 
 impl Engine {
@@ -77,14 +67,17 @@ impl Engine {
     handle
   }
 
-  pub(crate) fn add_mesh(&mut self, mesh: Mesh) -> MeshHandle {
+  pub(crate) fn store_mesh(&mut self, mesh: Mesh) -> MeshHandle {
     let handle = self.meshes.insert(mesh);
     log::info!("Added mesh to cache with handle {:?}", handle);
     handle
   }
 
-  pub fn create_node(&mut self, parent: NodeHandle, position: Vec3, rotation: Quat, scale: Vec3) -> NodeHandle {
-    let node = Node::new(&self.device, &self.bind_group_layouts.node, Transform { position, rotation, scale });
+  pub fn create_node(&mut self, scene: SceneHandle, desc: NodeDescriptor) -> NodeHandle {
+    let parent = desc.parent.unwrap_or_else(|| self.scenes[scene].root());
+
+    let node = Node::new(&self.device, &self.bind_group_layouts.node, desc.transform);
+
     self.attach(node, parent)
   }
 
@@ -95,6 +88,7 @@ impl Engine {
           parent_node.remove_child(handle);
         }
       }
+
       for &child_handle in node.children() {
         self.remove_node(child_handle);
       }
@@ -103,8 +97,10 @@ impl Engine {
     }
   }
 
-  pub fn create_mesh_node(&mut self, parent: NodeHandle, meshes: Vec<MeshHandle>, position: Vec3, rotation: Quat, scale: Vec3) -> NodeHandle {
-    let node = Node::new_mesh(&self.device, &self.bind_group_layouts.node, &self.meshes, meshes, position, rotation, scale);
+  pub fn create_mesh(&mut self, scene: SceneHandle, desc: MeshNodeDescriptor) -> NodeHandle {
+    let parent = desc.parent.unwrap_or_else(|| self.scenes[scene].root());
+
+    let node = Node::new_mesh(&self.device, &self.bind_group_layouts.node, &self.meshes, desc);
     self.attach(node, parent)
   }
 
@@ -127,8 +123,11 @@ impl Engine {
     Ok(self.attach(node, parent))
   }
 
-  pub fn create_light_node(&mut self, parent: NodeHandle, position: Vec3, color: Vec3, intensity: f32) -> NodeHandle {
-    let node = Node::new_light(&self.device, &self.bind_group_layouts.node, position, color, intensity);
+  pub fn create_light(&mut self, scene: SceneHandle, desc: LightDescriptor) -> NodeHandle {
+    let parent = desc.parent.unwrap_or_else(|| self.scenes[scene].root());
+
+    let node = Node::new_light(&self.device, &self.bind_group_layouts.node, desc);
+
     self.attach(node, parent)
   }
 
