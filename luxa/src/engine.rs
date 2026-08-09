@@ -11,7 +11,7 @@ use slotmap::SlotMap;
 use web_time::Instant;
 
 use crate::models::{Material, MaterialFallbacks, Mesh, Texture, Vertex};
-use crate::nodes::Node3D;
+use crate::nodes::Node;
 use crate::scenes::Scene;
 use gpu::{create_depth_texture, init};
 use ibl::Ibl;
@@ -20,7 +20,7 @@ pub use skybox::SkyboxMode;
 
 use pipelines::Pipelines;
 use render::BindGroupLayouts;
-pub use resources::{MaterialHandle, MeshHandle, Node3DHandle, SceneHandle, TextureHandle};
+pub use resources::{MaterialHandle, MeshHandle, NodeHandle, SceneHandle, TextureHandle};
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -91,7 +91,7 @@ pub struct Engine {
 
   // Arenas for storing resources, so we can return handles to them.
   scenes: SlotMap<SceneHandle, Scene>,
-  nodes: SlotMap<Node3DHandle, Node3D>,
+  nodes: SlotMap<NodeHandle, Node>,
   meshes: SlotMap<MeshHandle, Mesh>,
   materials: SlotMap<MaterialHandle, Material>,
   textures: SlotMap<TextureHandle, Texture>,

@@ -1,84 +1,221 @@
 # Luxa
 
-A Rust workspace for learning [wgpu](https://wgpu.rs/) (WebGPU) and modern GPU rendering, built up
-from a minimal single-file cube into a small but reasonably complete 3D engine.
+Luxa is a compact 3D rendering engine for Rust, built on
+[`wgpu`](https://wgpu.rs/) and designed for native and WebAssembly applications. It provides a
+scene graph, glTF loading, physically based rendering, image-based lighting and engine-owned GPU
+resources behind a small handle-based API.
 
-The goal is a **simple but complete WebGPU based engine** that hides the raw `wgpu` resource graph
-behind a small, ergonomic public API, while keeping every crate readable end to end. This is a
-learning project, not AAA or production code, so it favours clarity over maximum performance or
-completeness.
+The project favours a readable, complete rendering path over production-engine complexity. Luxa
+owns the WebGPU resource graph while applications own their window, event loop, input and platform
+integration.
 
-## Crates
+[Try the WebGPU viewer](https://benc-uk.github.io/luxa/)
 
-The workspace is a Cargo workspace with four crates, each with a distinct role.
+> [!NOTE]
+> Luxa is under active development. The crate is currently version `0.0.1`, is not published to
+> crates.io and does not yet promise a stable public API.
 
-### [luxa](luxa/) - the engine
+## Features
 
-`luxa` is the reusable 3D engine (a library crate) and the heart of the project. It wraps the whole
-`wgpu` graph (instance, adapter, device, queue, surface, pipelines, bind groups, buffers, command
-encoders) so consumers work with engine-owned resources and opaque handles instead of raw GPU
-objects.
+### Rendering
 
-Features:
+- Metallic-roughness PBR with direct and image-based lighting.
+- Base colour, metallic-roughness, normal, occlusion and emissive texture maps.
+- Opaque, alpha-masked and alpha-blended materials, including double-sided rendering.
+- HDR equirectangular environment loading with GPU-baked irradiance and prefiltered cubemaps.
+- Selectable environment, irradiance and prefiltered skybox views with mip-level control.
+- Depth buffering, normal transforms and sRGB-correct surface and texture handling.
+- Up to 16 positional lights with colour and intensity.
 
-- **glTF 2.0 loading** of `.gltf` and `.glb` assets, including meshes, materials and textures.
-- **Scene graph** with a node hierarchy (`Node3D`), parent/child transforms and world-matrix
-  propagation via depth-first traversal.
-- **Multiple scenes**, each with its own root node, addressed by `SceneHandle`.
-- **Node types** for meshes, cameras and lights, created through a small factory API
-  (`create_mesh_node`, `create_camera_node`, `create_light_node`).
-- **Multiple lights** (currently up to 16) with position, colour and intensity, gathered from the
-  scene graph each frame.
-- **PBR metallic-roughness shading**.
-- **Handle-based resources** (meshes, materials, textures, nodes, scenes) stored in slot maps, so
-  the raw `wgpu` types never leak into the public API.
-- **Cross-platform**: targets native desktop and `wasm32-unknown-unknown` for WebGPU-capable
-  browsers.
+### Scenes and assets
 
-### [harness](harness/) - the test app
+- Hierarchical scene graph with parent-child transform propagation.
+- Multiple independent scenes addressed through opaque handles.
+- Mesh, camera, light and transform-only nodes.
+- Node transforms using `glam` vectors, matrices and quaternions.
+- Per-mesh and per-node axis-aligned bounding boxes.
+- glTF 2.0 `.gltf` and `.glb` loading, including embedded or external buffers and images.
+- glTF metallic-roughness materials, texture channels, alpha modes and double-sided materials.
+- Procedural cube and UV-sphere meshes through `MeshBuilder`.
 
-A small binary that drives `luxa` through a `winit` window and event loop. It consumes **only** the
-engine's public API, so it doubles as a worked example of how to set up an engine, build a scene,
-load a glTF model, add lights and a camera, and render each frame. If the harness needs something
-the public API cannot express, that is a signal to improve the engine, not to bypass it.
+### Engine integration
 
-### [web-viewer](web-viewer/) - the browser viewer
+- Native surface creation through `Engine::new`.
+- Browser canvas creation through `Engine::new_from_canvas`.
+- Opaque handles for scenes, nodes, meshes, materials and textures.
+- All `wgpu` devices, queues, surfaces, pipelines, bind groups and buffers remain internal.
+- Platform-independent frame timing through `web-time`.
+- `anyhow` errors and `log`-based runtime diagnostics.
 
-A WebAssembly viewer that consumes `luxa` through its public API. It owns browser-specific work such
-as DOM access, asset fetching, pointer input and the render loop, while the engine continues to own
-the rendering implementation. The viewer can switch glTF models and HDR environments at runtime.
+## Architecture
 
-### [cube](cube/) - the learning exercise
+The workspace contains two active crates:
 
-A self-contained, texture-mapped 3D cube that runs on desktop and in the browser. It predates the
-engine and does **not** use `luxa`; it stays as a from-scratch reference showing the rendering loop,
-a thin `wgpu` helper layer, GPU setup, buffers, camera transforms, shader uniforms, textures, depth
-testing and cross-platform startup. See the [cube README](cube/README.md) for its architecture and
-build instructions.
+| Path                         | Purpose                                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------------------------- |
+| [`luxa/`](luxa/)             | Reusable engine library and WGSL shaders. Owns rendering, scenes and GPU resources.             |
+| [`web-viewer/`](web-viewer/) | WebAssembly reference application. Owns the DOM, asset fetching, input and browser render loop. |
 
-## Building
+Applications interact with the engine through `Engine` and typed slot-map handles. A typical frame
+follows this path:
 
-Standard Cargo workflows apply from the workspace root:
-
-```sh
-cargo run -p harness      # run the engine test harness
-cargo run -p cube         # run the standalone cube
-cargo build               # build everything
+```text
+application input
+       |
+       v
+node and scene updates
+       |
+       v
+Engine::update -> Engine::render
+       |
+       +-> scene traversal and world transforms
+       +-> camera, light and material uploads
+       +-> opaque pass -> skybox -> blended pass
+       v
+WebGPU surface
 ```
 
-See the `cube` and `web-viewer` Makefiles for WebAssembly build and local serving commands.
+The public API exports:
 
-## Conventions
+- `Engine`, `SceneHandle`, `Node3DHandle`, `MeshHandle`, `MaterialHandle` and `TextureHandle`.
+- `Node3D`, `Mesh`, `MeshBuilder`, `Material`, `Vertex` and `AlphaMode`.
+- `Aabb`, `Color`, `Size` and `SkyboxMode`.
 
-- Rust edition 2024, `glam` for maths, `anyhow` for errors, the `log` crate for logging.
-- Formatting via `rustfmt` (2-space indent, `max_width = 180`); run `cargo fmt`.
-- `wgpu` is pinned (currently `29.0`) due to an upstream bug. See the note in the relevant
-  `Cargo.toml` before bumping it.
+## Getting started
 
-## Helpful references
+### Requirements
 
-- <https://3dviewer.net/>
-- <https://sandbox.babylonjs.com/>
-- <https://gltf-viewer.donmccurdy.com/>
-- <https://github.khronos.org/glTF-Assets/>
-- <https://github.khronos.org/glTF-Sample-Viewer-Release/>
+- A current stable Rust toolchain.
+- A graphics adapter and driver supported by `wgpu`.
+- For the viewer: the `wasm32-unknown-unknown` target, `wasm-pack`, Node.js and a browser with
+  WebGPU enabled.
+
+Clone the repository and check the engine:
+
+```sh
+git clone https://github.com/benc-uk/luxa.git
+cd luxa
+cargo check -p luxa
+```
+
+To use the source repository directly from another Cargo project:
+
+```toml
+[dependencies]
+luxa = { git = "https://github.com/benc-uk/luxa" }
+glam = "0.33"
+```
+
+`Engine::new` accepts a value convertible to `wgpu::SurfaceTarget<'static>`, such as an owned
+`winit` window. The application does not otherwise need access to Luxa's internal `wgpu` objects.
+
+## Core API flow
+
+The following shows the engine-side flow after an application has created a surface target and
+chosen its initial dimensions:
+
+```rust
+use glam::{Quat, Vec3};
+use luxa::Engine;
+
+let mut engine = Engine::new(surface_target, (width, height)).await?;
+
+let scene = engine.create_scene();
+let root = engine.scene(scene).root();
+engine.scene_mut(scene).set_background_color([0.02, 0.02, 0.03]);
+
+let camera = engine.create_camera_node(
+  root,
+  Vec3::new(0.0, 1.0, 4.0),
+  Vec3::ZERO,
+  Vec3::ONE,
+  60.0, // vertical field of view in degrees
+  0.1,
+  200.0,
+);
+
+let model = engine.load_gltf("assets/model.glb", root)?;
+engine.node_mut(model).set_rotation(Quat::IDENTITY);
+
+// Once per frame:
+engine.update();
+engine.render(scene, camera)?;
+```
+
+Use `load_gltf_bytes` when asset bytes have already been fetched, as in a browser. Call `resize`
+when the target dimensions change. HDR bytes can be passed to `set_environment`, then IBL can be
+enabled on individual scenes with `scene_mut(...).set_ibl_enabled(true)`.
+
+The [`web-viewer`](web-viewer/) is the complete reference for canvas setup, asynchronous asset
+loading, orbit controls and `requestAnimationFrame` integration.
+
+## Run the web viewer
+
+Install the WebAssembly target and `wasm-pack` once:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack
+```
+
+Build and serve the viewer:
+
+```sh
+cd web-viewer
+make build
+make serve
+```
+
+Open <http://localhost:8000>. The viewer supports mouse, pen and touch orbit controls, wheel or
+pinch zoom, model switching and HDR environment switching.
+
+Useful viewer commands:
+
+| Command        | Purpose                                                     |
+| -------------- | ----------------------------------------------------------- |
+| `make build`   | Development WebAssembly build.                              |
+| `make release` | Optimised WebAssembly build.                                |
+| `make serve`   | Start the Vite development server on port 8000.             |
+| `make bundle`  | Build the release WebAssembly package and production site.  |
+| `make check`   | Check the viewer for `wasm32-unknown-unknown`.              |
+| `make clippy`  | Run Clippy for the WebAssembly target with warnings denied. |
+
+## Current scope
+
+Luxa is functional, but intentionally smaller than a general-purpose production engine. Current
+constraints include:
+
+- glTF import selects the default or first scene, supports triangle-list primitives and samples
+  `TEXCOORD_0`. Imported node transforms are flattened into the generated mesh data.
+- `Mesh` and `Vertex` are exported, but direct insertion of a custom mesh into the engine resource
+  store is not yet part of the public API.
+- Alpha-blended meshes render after opaque geometry but are not yet sorted by camera depth.
+- Lighting is limited to 16 positional lights per scene.
+- There is no frustum culling, instancing, level-of-detail system, skeletal animation or general
+  animation system.
+- Exposure is currently fixed in the shader; configurable tone mapping is on the roadmap.
+- The repository currently has no automated unit or integration test suite. The WebAssembly viewer
+  is the primary integration and visual test application.
+- Native rendering is supported by the library API, but this repository does not currently include
+  a native example application.
+
+These limits keep the implementation approachable while leaving clear extension points in the
+scene, resource and pipeline layers.
+
+## Development
+
+Run checks from the workspace root:
+
+```sh
+cargo check --workspace
+cargo check -p web-viewer --target wasm32-unknown-unknown
+cargo fmt --all -- --check
+```
+
+The workspace uses Rust edition 2024, 2-space Rust formatting and `glam` for maths. `wgpu` is pinned
+to `29.0` because of [gfx-rs/wgpu#9855](https://github.com/gfx-rs/wgpu/issues/9855); check that issue
+before updating the dependency.
+
+## Licence
+
+Luxa is available under the [MIT Licence](luxa/LICENSE).

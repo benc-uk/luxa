@@ -2,11 +2,11 @@
 // Holds scene with a root node and other configuration
 // ======================================================================================
 
-use crate::engine::Node3DHandle;
+use crate::engine::NodeHandle;
 
 #[derive(Debug)]
 pub struct Scene {
-  root: Node3DHandle,
+  root: NodeHandle,
   background_color: [f32; 3],
 
   ambient_color: [f32; 3],
@@ -15,19 +15,39 @@ pub struct Scene {
   ibl_enabled: bool,
 }
 
-impl Scene {
-  pub fn new(root: Node3DHandle) -> Self {
+#[derive(Debug, Clone)]
+pub struct SceneDescriptor {
+  pub background_color: [f32; 3],
+  pub ambient_color: [f32; 3],
+  pub ambient_intensity: f32,
+  pub ibl_enabled: bool,
+}
+
+// implement default for SceneDescriptor
+impl Default for SceneDescriptor {
+  fn default() -> Self {
     Self {
-      root,
       background_color: [0.0, 0.0, 0.0],
       ambient_color: [1.0, 1.0, 1.0],
       ambient_intensity: 0.01,
       ibl_enabled: false,
     }
   }
+}
+
+impl Scene {
+  pub(crate) fn new(root: NodeHandle, desc: SceneDescriptor) -> Self {
+    Self {
+      root,
+      background_color: desc.background_color,
+      ambient_color: desc.ambient_color,
+      ambient_intensity: desc.ambient_intensity,
+      ibl_enabled: desc.ibl_enabled,
+    }
+  }
 
   /// Get the root node of the scene.
-  pub fn root(&self) -> Node3DHandle {
+  pub fn root(&self) -> NodeHandle {
     self.root
   }
 

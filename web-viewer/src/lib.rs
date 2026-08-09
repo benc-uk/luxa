@@ -6,9 +6,12 @@
 // ===================================================================================================
 mod js_helpers;
 
+use glam::Vec3;
 use glam::vec3;
 use js_helpers::{add_listener, fetch_bytes};
 use luxa::Engine;
+use luxa::ModelDescriptor;
+use luxa::SceneDescriptor;
 use std::cell::{Cell, RefCell};
 use wasm_bindgen::prelude::*;
 use web_sys::{PointerEvent, WheelEvent};
@@ -33,9 +36,8 @@ struct CamState {
 thread_local! {
   static ENGINE: RefCell<Option<Engine>> = RefCell::new(None);
   static SCENE: Cell<Option<luxa::SceneHandle>> = Cell::new(None);
-  static CAMERA: Cell<Option<luxa::Node3DHandle>> = Cell::new(None);
-  static ROOT_NODE : Cell<Option<luxa::Node3DHandle>> = Cell::new(None);
-  static MODEL_NODE : Cell<Option<luxa::Node3DHandle>> = Cell::new(None);
+  static CAMERA: Cell<Option<luxa::NodeHandle>> = Cell::new(None);
+  static MODEL_NODE : Cell<Option<luxa::NodeHandle>> = Cell::new(None);
   static CAM_STATE: RefCell<CamState> = RefCell::new(CamState {
     yaw: 0.0,
     pitch: 0.0,
@@ -45,8 +47,8 @@ thread_local! {
   });
 }
 
-const DEFAULT_MODEL: &str = "assets/models/khronos/DamagedHelmet.glb";
-const DEFAULT_ENVIRONMENT: &str = "assets/ibl/colorful_studio_4k.hdr";
+const DEFAULT_MODEL: &str = "assets/models/khronos/Duck.glb";
+const DEFAULT_ENVIRONMENT: &str = "assets/ibl/simple.hdr";
 
 // Marks this as the module's entry point
 #[wasm_bindgen(start)]
@@ -93,26 +95,25 @@ pub async fn load_model(path: &str) {
 
   ENGINE.with(|cell| {
     if let Some(engine) = cell.borrow_mut().as_mut() {
-      let root = ROOT_NODE.with(|cell| cell.get());
-      if let Some(root) = root {
-        if let Some(model) = MODEL_NODE.with(|cell| cell.get()) {
-          engine.remove_node(model);
-        }
+      let scene = SCENE.with(|cell| cell.get()).unwrap();
 
-        let model = engine.load_gltf_bytes(&model_bytes, root).unwrap();
-        MODEL_NODE.with(|cell| cell.set(Some(model)));
-
-        // Get the node AABB size and use that to scale the model to 1,1,1
-        let aabb = engine.node(model).aabb().unwrap();
-        let size = aabb.size();
-        let size_avg = (size.x + size.y + size.z) / 3.0;
-        let center = aabb.center();
-        let scale = glam::vec3(1.0 / size_avg, 1.0 / size_avg, 1.0 / size_avg);
-
-        // Move the model so that its center is at the origin, and scale it to fit in a 1x1x1 cube
-        engine.node_mut(model).set_scale(scale);
-        engine.node_mut(model).set_position(-scale * center);
+      if let Some(model) = MODEL_NODE.with(|cell| cell.get()) {
+        engine.remove_node(model);
       }
+
+      let model = engine.load_gltf_bytes(scene, &model_bytes, ModelDescriptor::default()).unwrap();
+      MODEL_NODE.with(|cell| cell.set(Some(model)));
+
+      // Get the node AABB size and use that to scale the model to 1,1,1
+      let aabb = engine.node(model).aabb().unwrap();
+      let size = aabb.size();
+      let size_avg = (size.x + size.y + size.z) / 3.0;
+      let center = aabb.center();
+      let scale = glam::vec3(1.0 / size_avg, 1.0 / size_avg, 1.0 / size_avg);
+
+      // Move the model so that its center is at the origin, and scale it to fit in a 1x1x1 cube
+      engine.node_mut(model).set_scale(scale);
+      engine.node_mut(model).set_position(-scale * center);
     }
   });
 
@@ -173,16 +174,14 @@ pub async fn set_skybox_mode(mode: &str) {
 fn build_scene() {
   ENGINE.with(|cell| {
     if let Some(engine) = cell.borrow_mut().as_mut() {
-      let scene_hdl = engine.create_scene();
+      let scene_hdl = engine.create_scene(SceneDescriptor::default());
       let scene = engine.scene_mut(scene_hdl);
-      let root = scene.root();
       scene.set_background_color([0.1, 0.1, 0.1]);
       scene.set_ambient_intensity(0.3);
 
-      let camera = engine.create_camera_node(root, vec3(0.0, 1.0, 4.0), vec3(0.0, 0.0, 0.0), glam::Vec3::ONE, 70.0, 0.1, 200.0);
+      let camera = engine.create_camera(scene_hdl, luxa::CameraDescriptor::default()).unwrap();
       engine.skybox_set_mode(luxa::SkyboxMode::EnvironmentMap, 0.0);
 
-      ROOT_NODE.with(|cell| cell.set(Some(root)));
       SCENE.with(|cell| cell.set(Some(scene_hdl)));
       CAMERA.with(|cell| cell.set(Some(camera)));
     }
@@ -310,6 +309,7 @@ fn start_render_loop() {
         });
         let dir = glam::Quat::from_euler(glam::EulerRot::YXZ, yaw, pitch, 0.0) * glam::Vec3::Z;
         engine.node_mut(camera).set_position(dir * radius);
+        engine.node_mut(camera).look_at(vec3(0.0, 0.0, 0.0), Vec3::Y);
 
         // Actually rendering the scene happens here
         if let Err(e) = engine.render(scene, camera) {

@@ -1,8 +1,8 @@
 use std::vec;
 
-use super::{Engine, Node3DHandle, SceneHandle, gpu};
+use super::{Engine, NodeHandle, SceneHandle, gpu};
 use crate::{engine::gpu::wgpu_color_from_array, helpers};
-use glam::Mat4;
+use glam::{Mat4, Quat};
 
 pub(crate) struct BindGroupLayouts {
   pub(crate) frame_cam: wgpu::BindGroupLayout,
@@ -40,7 +40,8 @@ impl Engine {
     self.frame_uniform.time
   }
 
-  pub fn render(&mut self, scene_hdl: SceneHandle, camera_node: Node3DHandle) -> anyhow::Result<()> {
+  // This is the main render function, which renders a scene from the perspective of a camera node. It traverses the scene graph, collects all nodes with meshes, and renders them in depth-first order. It also handles lights and uploads their data to the GPU.
+  pub fn render(&mut self, scene_hdl: SceneHandle, camera_node: NodeHandle) -> anyhow::Result<()> {
     // We can't render unless the surface is configured
     if !self.is_surface_configured {
       return Ok(());
@@ -67,21 +68,24 @@ impl Engine {
     self.lights_uniform.ambient_intensity = ambient_intensity;
     self.lights_uniform.ibl_enabled = if ibl_enabled { 1 } else { 0 };
     // List of nodes to render, with their world matrices. We will fill this by traversing the scene graph.
-    let mut render_list: Vec<Node3DHandle> = Vec::new();
+    let mut render_list: Vec<NodeHandle> = Vec::new();
     // Stack starts with the root node and identity world matrix
-    let mut stack = vec![(root, Mat4::IDENTITY)];
+    let mut stack = vec![(root, Mat4::IDENTITY, Quat::IDENTITY)];
     let mut camera_found = false;
 
     // This stack approach is a depth-first traversal of the scene graph, without the need for recursion.
-    while let Some((node_hdl, parent_world)) = stack.pop() {
+    while let Some((node_hdl, parent_world, parent_rotation)) = stack.pop() {
       // Calculate this node's world matrix and set/cache it in the node
-      let world = parent_world * self.nodes[node_hdl].local_matrix();
+      let node = &self.nodes[node_hdl];
+      let world = parent_world * node.local_matrix();
+      let world_rotation = parent_rotation * node.rotation();
+
       self.nodes[node_hdl].set_world_matrix(world);
       let node = &self.nodes[node_hdl];
 
       // Handle camera node specially, have to do this here after world matrix is set
       if node_hdl == camera_node {
-        if let Some(vp) = node.view_proj(self.aspect) {
+        if let Some(vp) = node.view_proj(world_rotation, self.aspect)? {
           self.camera_uniform.view_proj = vp.to_cols_array();
           self.camera_uniform.pos = node.world_position().to_array();
           self.camera_uniform.inv_view_proj = vp.inverse().to_cols_array();
@@ -104,7 +108,7 @@ impl Engine {
       }
 
       for &child in node.children() {
-        stack.push((child, world));
+        stack.push((child, world, world_rotation));
       }
     }
 

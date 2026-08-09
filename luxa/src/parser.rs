@@ -10,8 +10,9 @@ use glam::{Mat3, Mat4, Quat, Vec2, Vec3};
 use image::{DynamicImage, ImageBuffer, Luma, LumaA, Rgb, Rgba};
 
 use crate::{
-  engine::{Engine, Node3DHandle, TextureHandle},
-  models::{Mesh, Vertex},
+  SceneHandle,
+  engine::{Engine, NodeHandle, TextureHandle},
+  models::{Mesh, ModelDescriptor, Vertex},
 };
 
 struct ParsedGltf {
@@ -52,22 +53,24 @@ struct ParsedPrimitive {
 
 impl Engine {
   /// Loads a `.gltf` or `.glb` file and attaches its flattened geometry below `parent`.
-  pub fn load_gltf(&mut self, path: &str, parent: Node3DHandle) -> Result<Node3DHandle> {
+  pub fn load_gltf(&mut self, scene: SceneHandle, path: &str, descriptor: ModelDescriptor) -> Result<NodeHandle> {
     let (document, buffers, images) = gltf::import(path).with_context(|| format!("failed to import glTF file {path}"))?;
     let parsed = parse_document(&document, &buffers, images)?;
 
+    let parent = descriptor.parent.unwrap_or_else(|| self.scene(scene).root());
     self.add_parsed_gltf(parsed, parent)
   }
 
   /// Loads a self-contained GLB or glTF byte slice and attaches its flattened geometry below `parent`.
-  pub fn load_gltf_bytes(&mut self, bytes: &[u8], parent: Node3DHandle) -> Result<Node3DHandle> {
+  pub fn load_gltf_bytes(&mut self, scene: SceneHandle, bytes: &[u8], descriptor: ModelDescriptor) -> Result<NodeHandle> {
     let (document, buffers, images) = gltf::import_slice(bytes).context("failed to import glTF bytes")?;
     let parsed = parse_document(&document, &buffers, images)?;
 
+    let parent = descriptor.parent.unwrap_or_else(|| self.scene(scene).root());
     self.add_parsed_gltf(parsed, parent)
   }
 
-  fn add_parsed_gltf(&mut self, parsed: ParsedGltf, parent: Node3DHandle) -> Result<Node3DHandle> {
+  fn add_parsed_gltf(&mut self, parsed: ParsedGltf, parent: NodeHandle) -> Result<NodeHandle> {
     let ParsedGltf { materials, primitives, images } = parsed;
     let mut material_handles = Vec::with_capacity(materials.len());
 

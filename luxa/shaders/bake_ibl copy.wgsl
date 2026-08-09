@@ -56,28 +56,23 @@ fn frag_equirect(in: VertexOutput) -> @location(0) vec4f {
 fn frag_irradiance(in: VertexOutput) -> @location(0) vec4f {
     let normal = face_direction(in.ndc);
 
-    var up = vec3f(0.0, 0.0, 1.0);
-    if abs(normal.z) >= 0.999 {
-        up = vec3f(1.0, 0.0, 0.0);
-    }
-    let tangent = normalize(cross(up, normal));
-    let bitangent = cross(normal, tangent);
+    var up = vec3f(0.0, 1.0, 0.0);
+    let right = normalize(cross(up, normal));
+    up = normalize(cross(normal, right));
 
-    // Tuning: increase to 2048 or 4096 if bright HDRs still produce directional noise.
-    // Bake cost scales linearly with this value; 1024 is about 6.3 million samples for
-    // the complete 32x32 irradiance cubemap.
-    let SAMPLE_COUNT = 1024u;
-    let env_size = f32(textureDimensions(t_env, 0).x);
-    let max_env_mip = f32(textureNumLevels(t_env) - 1u);
     var irradiance = vec3f(0.0);
-    for (var index = 0u; index < SAMPLE_COUNT; index++) {
-        let sample = cosine_sample_hemisphere(hammersley(index, SAMPLE_COUNT));
-        let world = normalize(sample.x * tangent + sample.y * bitangent + sample.z * normal);
-        let pdf = sample.z / PI;
-        let lod = clamp(compute_irradiance_lod(pdf, env_size, f32(SAMPLE_COUNT)), 0.0, max_env_mip);
-        irradiance += textureSampleLevel(t_env, s_env, world, lod).rgb;
+    let sample_delta = 0.025;
+    var samples = 0.0;
+    for (var phi = 0.0; phi < 2.0 * PI; phi += sample_delta) {
+        for (var theta = 0.0; theta < 0.5 * PI; theta += sample_delta) {
+            let tangent = vec3f(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
+            let world = tangent.x * right + tangent.y * up + tangent.z * normal;
+            let radiance = textureSampleLevel(t_env, s_env, world, 0.0).rgb;
+            irradiance += radiance * cos(theta) * sin(theta);
+            samples += 1.0;
+        }
     }
-    irradiance = PI * irradiance / f32(SAMPLE_COUNT);
+    irradiance = PI * irradiance / samples;
     return vec4f(irradiance, 1.0);
 }
 
@@ -151,13 +146,6 @@ fn hammersley(index: u32, count: u32) -> vec2f {
     return vec2f(f32(index) / f32(count), radical_inverse_vdc(index));
 }
 
-// Map a uniformly distributed 2D point to a cosine-weighted hemisphere sample.
-fn cosine_sample_hemisphere(xi: vec2f) -> vec3f {
-    let radius = sqrt(xi.x);
-    let phi = 2.0 * PI * xi.y;
-    return vec3f(radius * cos(phi), radius * sin(phi), sqrt(1.0 - xi.x));
-}
-
 // Importance sample a GGX half-vector for the given 2D Hammersley point, normal and roughness.
 fn importance_sample_ggx(xi: vec2f, normal: vec3f, roughness: f32) -> vec3f {
     let alpha = roughness * roughness;
@@ -219,17 +207,6 @@ fn distribution_ggx(n_dot_h: f32, alpha: f32) -> f32 {
     let a = n_dot_h * alpha;
     let k = alpha / (1.0 - n_dot_h * n_dot_h + a * a);
     return k * k / PI;
-}
-
-// Diffuse convolution tolerates a small extra blur in exchange for suppressing visible
-// variance from very small, bright HDR features.
-fn compute_irradiance_lod(pdf: f32, env_size: f32, sample_count: f32) -> f32 {
-    let sample_lod = 0.5 * log2(6.0 * env_size * env_size / (4.0 * PI * sample_count * max(pdf, 1e-6)));
-    // Tuning: raise this to remove residual streaks at the cost of flatter diffuse light;
-    // lower it towards 0.0 to preserve more directional contrast. Each whole step selects
-    // an environment mip with half the linear resolution.
-    let lod_bias = 1.0;
-    return sample_lod + lod_bias;
 }
 
 // Select an environment source mip matching the solid angle represented by one sample.

@@ -1,9 +1,13 @@
+mod camera;
+
 use crate::common::Aabb;
-use crate::engine::{MeshHandle, Node3DHandle};
+use crate::engine::{MeshHandle, NodeHandle};
 use crate::models::Mesh;
 use glam::{Mat4, Quat, Vec3};
 use slotmap::SlotMap;
 use wgpu::util::DeviceExt;
+
+pub use camera::{CameraDescriptor, CameraOrientation};
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -12,7 +16,7 @@ struct NodeUniform {
   normal_matrix: [f32; 16],
 }
 
-pub struct Node3D {
+pub struct Node {
   kind: NodeKind,
 
   position: Vec3,
@@ -20,8 +24,8 @@ pub struct Node3D {
   scale: Vec3,
   local_matrix: Mat4,
   world_matrix: Mat4,
-  parent: Option<Node3DHandle>,
-  children: Option<Vec<Node3DHandle>>,
+  parent: Option<NodeHandle>,
+  children: Option<Vec<NodeHandle>>,
 
   // Size and center of the node's AABB in world space, if it has a mesh or other size/volume
   aabb: Option<Aabb>,
@@ -36,16 +40,8 @@ pub struct Node3D {
 pub(crate) enum NodeKind {
   Empty,
   Mesh(MeshData),
-  Camera(CameraData),
+  Camera(camera::CameraData),
   Light(LightData),
-}
-
-pub(crate) struct CameraData {
-  pub fovy: f32,
-  pub znear: f32,
-  pub zfar: f32,
-  pub target: Vec3, // world space
-  pub up: Vec3,     // usually Vec3::Y
 }
 
 pub(crate) struct MeshData {
@@ -57,20 +53,7 @@ pub(crate) struct LightData {
   pub intensity: f32,
 }
 
-impl CameraData {
-  pub(crate) fn view_proj(&self, world_pos: Vec3, aspect: f32) -> Mat4 {
-    let eye = if (self.target - world_pos).length_squared() < 1e-12 {
-      world_pos + Vec3::NEG_Z // degenerate guard: target == eye
-    } else {
-      world_pos
-    };
-    let view = glam::camera::rh::view::look_at_mat4(eye, self.target, self.up);
-    let proj = glam::camera::rh::proj::directx::perspective(self.fovy.to_radians(), aspect, self.znear, self.zfar);
-    proj * view
-  }
-}
-
-impl Node3D {
+impl Node {
   pub(crate) fn new(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, position: Vec3, rotation: Quat, scale: Vec3) -> Self {
     let uniform = NodeUniform {
       model_matrix: Mat4::IDENTITY.to_cols_array(), // Updated below
@@ -92,7 +75,7 @@ impl Node3D {
       }],
     });
 
-    let mut node = Node3D {
+    let mut node = Node {
       kind: NodeKind::Empty,
       position,
       rotation,
@@ -144,20 +127,6 @@ impl Node3D {
     node
   }
 
-  pub(crate) fn new_camera(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, position: Vec3, look_at: Vec3, scale: Vec3, fovy: f32, znear: f32, zfar: f32) -> Self {
-    let rotation = Quat::from_rotation_arc(glam::vec3(0.0, 0.0, -1.0), (look_at - position).normalize());
-    let mut node = Self::new(device, bind_group_layout, position, rotation, scale);
-    node.kind = NodeKind::Camera(CameraData {
-      fovy,
-      znear,
-      zfar,
-      target: look_at,
-      up: Vec3::Y,
-    });
-
-    node
-  }
-
   pub(crate) fn new_light(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, position: Vec3, color: Vec3, intensity: f32) -> Self {
     let rotation = Quat::IDENTITY;
     let scale = Vec3::ONE;
@@ -166,15 +135,15 @@ impl Node3D {
     node
   }
 
-  pub(crate) fn set_parent(&mut self, parent: Node3DHandle) {
+  pub(crate) fn set_parent(&mut self, parent: NodeHandle) {
     self.parent = Some(parent);
   }
 
-  pub(crate) fn parent(&self) -> Option<Node3DHandle> {
+  pub(crate) fn parent(&self) -> Option<NodeHandle> {
     self.parent
   }
 
-  pub(crate) fn add_child(&mut self, child: Node3DHandle) {
+  pub(crate) fn add_child(&mut self, child: NodeHandle) {
     if let Some(children) = &mut self.children {
       children.push(child);
     } else {
@@ -182,7 +151,7 @@ impl Node3D {
     }
   }
 
-  pub(crate) fn remove_child(&mut self, child: Node3DHandle) {
+  pub(crate) fn remove_child(&mut self, child: NodeHandle) {
     if let Some(children) = &mut self.children
       && let Some(index) = children.iter().position(|&handle| handle == child)
     {
@@ -190,7 +159,7 @@ impl Node3D {
     }
   }
 
-  pub(crate) fn children(&self) -> &[Node3DHandle] {
+  pub(crate) fn children(&self) -> &[NodeHandle] {
     if let Some(children) = &self.children { children } else { &[] }
   }
 
@@ -218,6 +187,11 @@ impl Node3D {
 
   pub fn set_rotation(&mut self, rotation: Quat) {
     self.rotation = rotation;
+
+    if let NodeKind::Camera(camera) = &mut self.kind {
+      camera.orientation = CameraOrientation::NodeRotation;
+    }
+
     self.update();
   }
 
@@ -225,11 +199,14 @@ impl Node3D {
     self.world_matrix = world_matrix;
   }
 
-  pub fn look_at(&mut self, target: Vec3) {
+  pub fn look_at(&mut self, target: Vec3, up: Vec3) {
+    // Cameras are a special case
     if let NodeKind::Camera(camera) = &mut self.kind {
-      camera.target = target;
+      camera.orientation = CameraOrientation::LookAt { target, up };
+      return;
     }
 
+    // For non-camera nodes, we can just set the rotation to look at the target point.
     let direction = target - self.position;
     if direction.length_squared() <= 1e-12 {
       return;
@@ -274,10 +251,10 @@ impl Node3D {
     }
   }
 
-  pub(crate) fn view_proj(&self, aspect: f32) -> Option<Mat4> {
+  pub(crate) fn view_proj(&self, world_rotation: Quat, aspect: f32) -> anyhow::Result<Option<Mat4>> {
     match &self.kind {
-      NodeKind::Camera(data) => Some(data.view_proj(self.world_position(), aspect)),
-      _ => None,
+      NodeKind::Camera(camera) => Ok(Some(camera.view_proj(self.world_position(), world_rotation, aspect)?)),
+      _ => Ok(None),
     }
   }
 
