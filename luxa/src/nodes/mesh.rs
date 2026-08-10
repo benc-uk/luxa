@@ -3,12 +3,15 @@ use crate::common::Aabb;
 use crate::engine::MeshHandle;
 use crate::models::Mesh;
 use crate::nodes::{Node, NodeHandle, NodeKind};
+use glam::Vec3;
 use slotmap::SlotMap;
 
 #[derive(Debug, Clone)]
 pub struct MeshNodeDescriptor {
   pub parent: Option<NodeHandle>,
-  pub transform: Transform,
+  pub position: Vec3,
+  pub rotation: glam::Quat,
+  pub scale: Vec3,
   pub meshes: Vec<MeshHandle>,
 }
 
@@ -16,7 +19,9 @@ impl Default for MeshNodeDescriptor {
   fn default() -> Self {
     Self {
       parent: None,
-      transform: Transform::default(),
+      position: Vec3::ZERO,
+      rotation: glam::Quat::IDENTITY,
+      scale: Vec3::ONE,
       meshes: Vec::new(),
     }
   }
@@ -28,7 +33,15 @@ pub(crate) struct MeshData {
 
 impl Node {
   pub(crate) fn new_mesh(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, mesh_arena: &SlotMap<MeshHandle, Mesh>, desc: MeshNodeDescriptor) -> Self {
-    let mut node = Self::new(device, bind_group_layout, desc.transform);
+    let mut node = Self::new(
+      device,
+      bind_group_layout,
+      Transform {
+        position: desc.position,
+        rotation: desc.rotation,
+        scale: desc.scale,
+      },
+    );
 
     // Compute the AABB and center of the node based on its meshes. This is useful for culling, camera framing, etc.
     // The handles are just keys, so we look each mesh up in the engine's mesh arena to read its local AABB.

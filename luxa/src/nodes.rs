@@ -2,9 +2,9 @@ mod camera;
 mod light;
 mod mesh;
 
-use crate::Transform;
 use crate::common::Aabb;
 use crate::engine::{MeshHandle, NodeHandle};
+use crate::{SceneHandle, Transform};
 use glam::{Mat4, Quat, Vec3};
 pub(crate) use light::LightData;
 use wgpu::util::DeviceExt;
@@ -23,6 +23,7 @@ struct NodeUniform {
 
 pub struct Node {
   kind: NodeKind,
+  scene: Option<SceneHandle>,
 
   transform: Transform,
   local_matrix: Mat4,
@@ -71,6 +72,7 @@ impl Node {
 
     let mut node = Node {
       kind: NodeKind::Empty,
+      scene: None,
       transform,
       local_matrix: Mat4::IDENTITY,
       world_matrix: Mat4::IDENTITY,
@@ -225,5 +227,13 @@ impl Node {
 
   pub fn center(&self) -> Option<Vec3> {
     self.center
+  }
+
+  pub(crate) fn scene(&self) -> SceneHandle {
+    self.scene.expect("node is always attached to a scene before use")
+  }
+
+  pub(crate) fn set_scene(&mut self, scene: SceneHandle) {
+    self.scene = Some(scene);
   }
 }

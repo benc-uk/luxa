@@ -1,12 +1,8 @@
 use super::Engine;
-use crate::CameraDescriptor;
-use crate::Transform;
 use crate::models::{Material, Mesh, Texture};
-use crate::nodes::LightDescriptor;
-use crate::nodes::MeshNodeDescriptor;
-use crate::nodes::Node;
+use crate::nodes::{CameraDescriptor, CameraHandle, LightDescriptor, MeshNodeDescriptor, Node};
 use crate::scenes::{Scene, SceneDescriptor};
-use glam::{Quat, Vec3};
+use crate::{LightHandle, Transform};
 use slotmap::new_key_type;
 
 new_key_type! {
@@ -20,23 +16,25 @@ new_key_type! {
 #[derive(Debug, Clone, Default)]
 pub struct NodeDescriptor {
   pub parent: Option<NodeHandle>,
-  pub transform: Transform,
+  pub position: glam::Vec3,
+  pub rotation: glam::Quat,
+  pub scale: glam::Vec3,
 }
 
 impl Engine {
   pub fn create_scene(&mut self, desc: SceneDescriptor) -> SceneHandle {
-    let root_node = Node::new(&self.device, &self.bind_group_layouts.node, crate::Transform::default());
-
-    let root_handle = self.nodes.insert(root_node);
-    self.scenes.insert(Scene::new(root_handle, desc))
+    let root_handle = self.nodes.insert(Node::new(&self.device, &self.bind_group_layouts.node, crate::Transform::default()));
+    let scene = self.scenes.insert(Scene::new(root_handle, desc));
+    self.nodes[root_handle].set_scene(scene); // root has no parent to inherit from
+    scene
   }
 
-  pub fn scene(&self, handle: SceneHandle) -> &Scene {
-    self.scenes.get(handle).expect("Invalid scene handle")
+  pub fn scene(&self, handle: SceneHandle) -> anyhow::Result<&Scene> {
+    self.scenes.get(handle).ok_or_else(|| anyhow::anyhow!("Invalid scene handle"))
   }
 
-  pub fn scene_mut(&mut self, handle: SceneHandle) -> &mut Scene {
-    self.scenes.get_mut(handle).expect("Invalid scene handle")
+  pub fn scene_mut(&mut self, handle: SceneHandle) -> anyhow::Result<&mut Scene> {
+    self.scenes.get_mut(handle).ok_or_else(|| anyhow::anyhow!("Invalid scene handle"))
   }
 
   pub fn create_texture(&mut self, path: &str) -> anyhow::Result<TextureHandle> {
@@ -53,18 +51,18 @@ impl Engine {
     Ok(handle)
   }
 
-  pub fn create_material(&mut self, texture: Option<TextureHandle>) -> MaterialHandle {
+  pub fn create_material(&mut self, texture: Option<TextureHandle>) -> anyhow::Result<MaterialHandle> {
     let mut material = Material::new(&self.device, &self.bind_group_layouts.material, &self.material_fallbacks, &self.textures);
 
     if let Some(texture) = texture {
-      self.textures.get(texture).expect("Invalid texture handle");
+      anyhow::ensure!(self.textures.contains_key(texture), "Invalid texture handle");
       material.set_base_color_texture(texture);
     }
 
     let handle = self.materials.insert(material);
 
     log::info!("Created material with handle {:?}", handle);
-    handle
+    Ok(handle)
   }
 
   pub(crate) fn store_mesh(&mut self, mesh: Mesh) -> MeshHandle {
@@ -73,12 +71,20 @@ impl Engine {
     handle
   }
 
-  pub fn create_node(&mut self, scene: SceneHandle, desc: NodeDescriptor) -> NodeHandle {
-    let parent = desc.parent.unwrap_or_else(|| self.scenes[scene].root());
+  pub fn create_node(&mut self, scene: SceneHandle, desc: NodeDescriptor) -> anyhow::Result<NodeHandle> {
+    let parent = self.resolve_parent(scene, desc.parent)?;
 
-    let node = Node::new(&self.device, &self.bind_group_layouts.node, desc.transform);
+    let node = Node::new(
+      &self.device,
+      &self.bind_group_layouts.node,
+      Transform {
+        position: desc.position,
+        rotation: desc.rotation,
+        scale: desc.scale,
+      },
+    );
 
-    self.attach(node, parent)
+    Ok(self.attach(node, parent)?)
   }
 
   pub fn remove_node(&mut self, handle: NodeHandle) {
@@ -97,16 +103,15 @@ impl Engine {
     }
   }
 
-  pub fn create_mesh(&mut self, scene: SceneHandle, desc: MeshNodeDescriptor) -> NodeHandle {
-    let parent = desc.parent.unwrap_or_else(|| self.scenes[scene].root());
+  pub fn create_mesh(&mut self, scene: SceneHandle, desc: MeshNodeDescriptor) -> anyhow::Result<NodeHandle> {
+    let parent = self.resolve_parent(scene, desc.parent)?;
 
     let node = Node::new_mesh(&self.device, &self.bind_group_layouts.node, &self.meshes, desc);
-    self.attach(node, parent)
+    Ok(self.attach(node, parent)?)
   }
 
-  pub fn create_camera(&mut self, scene: SceneHandle, desc: CameraDescriptor) -> anyhow::Result<NodeHandle> {
-    // If no parent is specified, attach the camera to the root node of the scene.
-    let parent = desc.parent.unwrap_or_else(|| self.scenes[scene].root());
+  pub fn create_camera(&mut self, scene: SceneHandle, desc: CameraDescriptor) -> anyhow::Result<CameraHandle> {
+    let parent = self.resolve_parent(scene, desc.parent)?;
 
     anyhow::ensure!(
       desc.fov_degrees.is_finite() && desc.fov_degrees > 0.0 && desc.fov_degrees < 180.0,
@@ -120,46 +125,63 @@ impl Engine {
 
     let node = Node::new_camera(&self.device, &self.bind_group_layouts.node, desc);
 
-    Ok(self.attach(node, parent))
+    Ok(CameraHandle(self.attach(node, parent)?))
   }
 
-  pub fn create_light(&mut self, scene: SceneHandle, desc: LightDescriptor) -> NodeHandle {
-    let parent = desc.parent.unwrap_or_else(|| self.scenes[scene].root());
+  pub fn create_light(&mut self, scene: SceneHandle, desc: LightDescriptor) -> anyhow::Result<LightHandle> {
+    let parent = self.resolve_parent(scene, desc.parent)?;
 
     let node = Node::new_light(&self.device, &self.bind_group_layouts.node, desc);
 
-    self.attach(node, parent)
+    Ok(LightHandle(self.attach(node, parent)?))
   }
 
   // Private helper function to attach a node to a parent node and return the handle of the newly created node.
-  fn attach(&mut self, node: Node, parent: NodeHandle) -> NodeHandle {
+  fn attach(&mut self, node: Node, parent: NodeHandle) -> anyhow::Result<NodeHandle> {
     let handle = self.nodes.insert(node);
     self.nodes[parent].add_child(handle);
     self.nodes[handle].set_parent(parent);
-    handle
+
+    // Assign the scene handle to the newly created node. This is important for ensuring that nodes are aware of which scene they belong to.
+    let scene_handle = self.nodes[parent].scene();
+    self.nodes[handle].set_scene(scene_handle);
+
+    Ok(handle)
   }
 
-  pub fn material(&self, handle: MaterialHandle) -> &Material {
-    self.materials.get(handle).expect("Invalid material handle")
+  pub fn material(&self, handle: MaterialHandle) -> anyhow::Result<&Material> {
+    self.materials.get(handle).ok_or_else(|| anyhow::anyhow!("Invalid material handle"))
   }
 
-  pub fn material_mut(&mut self, handle: MaterialHandle) -> &mut Material {
-    self.materials.get_mut(handle).expect("Invalid material handle")
+  pub fn material_mut(&mut self, handle: MaterialHandle) -> anyhow::Result<&mut Material> {
+    self.materials.get_mut(handle).ok_or_else(|| anyhow::anyhow!("Invalid material handle"))
   }
 
-  pub fn mesh(&self, handle: MeshHandle) -> &Mesh {
-    self.meshes.get(handle).expect("Invalid mesh handle")
+  pub fn mesh(&self, handle: MeshHandle) -> anyhow::Result<&Mesh> {
+    self.meshes.get(handle).ok_or_else(|| anyhow::anyhow!("Invalid mesh handle"))
   }
 
-  pub fn mesh_mut(&mut self, handle: MeshHandle) -> &mut Mesh {
-    self.meshes.get_mut(handle).expect("Invalid mesh handle")
+  pub fn mesh_mut(&mut self, handle: MeshHandle) -> anyhow::Result<&mut Mesh> {
+    self.meshes.get_mut(handle).ok_or_else(|| anyhow::anyhow!("Invalid mesh handle"))
   }
 
-  pub fn node(&self, handle: NodeHandle) -> &Node {
-    self.nodes.get(handle).expect("Invalid node handle")
+  pub fn node(&self, handle: NodeHandle) -> anyhow::Result<&Node> {
+    self.nodes.get(handle).ok_or_else(|| anyhow::anyhow!("Invalid node handle"))
   }
 
-  pub fn node_mut(&mut self, handle: NodeHandle) -> &mut Node {
-    self.nodes.get_mut(handle).expect("Invalid node handle")
+  pub fn node_mut(&mut self, handle: NodeHandle) -> anyhow::Result<&mut Node> {
+    self.nodes.get_mut(handle).ok_or_else(|| anyhow::anyhow!("Invalid node handle"))
+  }
+
+  fn resolve_parent(&self, scene: SceneHandle, parent: Option<NodeHandle>) -> anyhow::Result<NodeHandle> {
+    let root = self.scene(scene)?.root();
+    match parent {
+      None => Ok(root),
+      Some(parent) => {
+        let parent_scene = self.node(parent)?.scene(); // errors if the handle is stale
+        anyhow::ensure!(parent_scene == scene, "Parent node does not belong to the specified scene");
+        Ok(parent)
+      }
+    }
   }
 }

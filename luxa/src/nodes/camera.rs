@@ -11,7 +11,7 @@ pub(crate) struct CameraData {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct CameraHandle(NodeHandle);
+pub struct CameraHandle(pub(crate) NodeHandle);
 
 impl From<CameraHandle> for NodeHandle {
   fn from(handle: CameraHandle) -> Self {

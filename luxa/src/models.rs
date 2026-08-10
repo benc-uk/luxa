@@ -11,19 +11,24 @@ pub use material::{AlphaMode, Material};
 pub use mesh_vert::{Mesh, Vertex};
 pub(crate) use texture::Texture;
 
-use crate::{NodeHandle, transform::Transform};
+use crate::NodeHandle;
+use glam::{Quat, Vec3};
 
 #[derive(Debug, Clone)]
 pub struct ModelDescriptor {
   pub parent: Option<NodeHandle>,
-  pub transform: Transform,
+  pub position: Vec3,
+  pub rotation: Quat,
+  pub scale: Vec3,
 }
 
 impl Default for ModelDescriptor {
   fn default() -> Self {
     Self {
       parent: None,
-      transform: Transform::default(),
+      position: Vec3::ZERO,
+      rotation: Quat::IDENTITY,
+      scale: Vec3::ONE,
     }
   }
 }

@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result, bail};
-use glam::{Mat3, Mat4, Quat, Vec2, Vec3};
+use glam::{Mat3, Mat4, Vec2, Vec3};
 use image::{DynamicImage, ImageBuffer, Luma, LumaA, Rgb, Rgba};
 
 use crate::{
@@ -58,7 +58,7 @@ impl Engine {
     let (document, buffers, images) = gltf::import(path).with_context(|| format!("failed to import glTF file {path}"))?;
     let parsed = parse_document(&document, &buffers, images)?;
 
-    let parent = descriptor.parent.unwrap_or_else(|| self.scene(scene).root());
+    let parent = descriptor.parent.map_or_else(|| self.scene(scene).map(|s| s.root()), Ok)?;
     self.add_parsed_gltf(parsed, scene, parent, descriptor)
   }
 
@@ -67,7 +67,7 @@ impl Engine {
     let (document, buffers, images) = gltf::import_slice(bytes).context("failed to import glTF bytes")?;
     let parsed = parse_document(&document, &buffers, images)?;
 
-    let parent = descriptor.parent.unwrap_or_else(|| self.scene(scene).root());
+    let parent = descriptor.parent.map_or_else(|| self.scene(scene).map(|s| s.root()), Ok)?;
     self.add_parsed_gltf(parsed, scene, parent, descriptor)
   }
 
@@ -82,41 +82,41 @@ impl Engine {
     let mut texture_cache: HashMap<(usize, wgpu::TextureFormat), TextureHandle> = HashMap::new();
 
     for parsed_mat in materials {
-      let out_mat = self.create_material(None);
+      let out_mat = self.create_material(None)?;
 
       if let Some(base_color_texture) = parsed_mat.base_color_texture {
         let texture_handle = load_material_texture(self, &images, &mut texture_cache, base_color_texture, wgpu::TextureFormat::Rgba8UnormSrgb)?;
-        self.material_mut(out_mat).set_base_color_texture(texture_handle);
+        self.material_mut(out_mat)?.set_base_color_texture(texture_handle);
       }
 
       if let Some(metallic_roughness_texture) = parsed_mat.metallic_roughness_texture {
         let texture_handle = load_material_texture(self, &images, &mut texture_cache, metallic_roughness_texture, wgpu::TextureFormat::Rgba8Unorm)?;
-        self.material_mut(out_mat).set_metallic_roughness_texture(texture_handle);
+        self.material_mut(out_mat)?.set_metallic_roughness_texture(texture_handle);
       }
 
       if let Some(emissive_texture) = parsed_mat.emissive_texture {
         let texture_handle = load_material_texture(self, &images, &mut texture_cache, emissive_texture, wgpu::TextureFormat::Rgba8UnormSrgb)?;
-        self.material_mut(out_mat).set_emissive_texture(texture_handle);
+        self.material_mut(out_mat)?.set_emissive_texture(texture_handle);
       }
 
       if let Some(normal_texture) = parsed_mat.normal_texture {
         let texture_handle = load_material_texture(self, &images, &mut texture_cache, normal_texture, wgpu::TextureFormat::Rgba8Unorm)?;
-        self.material_mut(out_mat).set_normal_texture(texture_handle);
+        self.material_mut(out_mat)?.set_normal_texture(texture_handle);
       }
 
       if let Some(occlusion_texture) = parsed_mat.occlusion_texture {
         let texture_handle = load_material_texture(self, &images, &mut texture_cache, occlusion_texture, wgpu::TextureFormat::Rgba8Unorm)?;
-        self.material_mut(out_mat).set_occlusion_texture(texture_handle);
+        self.material_mut(out_mat)?.set_occlusion_texture(texture_handle);
       }
 
-      self.material_mut(out_mat).set_base_color_factor(parsed_mat.base_color_factor);
-      self.material_mut(out_mat).set_metallic_factor(parsed_mat.metallic_factor);
-      self.material_mut(out_mat).set_roughness_factor(parsed_mat.roughness_factor);
-      self.material_mut(out_mat).set_normal_scale(parsed_mat.normal_scale);
-      self.material_mut(out_mat).set_occlusion_strength(parsed_mat.occlusion_strength);
-      self.material_mut(out_mat).set_emissive_factor(parsed_mat.emissive_factor);
+      self.material_mut(out_mat)?.set_base_color_factor(parsed_mat.base_color_factor);
+      self.material_mut(out_mat)?.set_metallic_factor(parsed_mat.metallic_factor);
+      self.material_mut(out_mat)?.set_roughness_factor(parsed_mat.roughness_factor);
+      self.material_mut(out_mat)?.set_normal_scale(parsed_mat.normal_scale);
+      self.material_mut(out_mat)?.set_occlusion_strength(parsed_mat.occlusion_strength);
+      self.material_mut(out_mat)?.set_emissive_factor(parsed_mat.emissive_factor);
 
-      self.material_mut(out_mat).set_alpha_mode(match parsed_mat.alpha_mode {
+      self.material_mut(out_mat)?.set_alpha_mode(match parsed_mat.alpha_mode {
         gltf::material::AlphaMode::Opaque => crate::models::AlphaMode::Opaque,
         gltf::material::AlphaMode::Mask => crate::models::AlphaMode::Mask,
         gltf::material::AlphaMode::Blend => crate::models::AlphaMode::Blend,
@@ -124,10 +124,10 @@ impl Engine {
       log::debug!("  Material   alpha mode: {:?}", parsed_mat.alpha_mode);
 
       if let Some(cutoff) = parsed_mat.alpha_cutoff {
-        self.material_mut(out_mat).set_alpha_cutoff(cutoff);
+        self.material_mut(out_mat)?.set_alpha_cutoff(cutoff);
       }
 
-      self.material_mut(out_mat).set_double_sided(parsed_mat.double_sided);
+      self.material_mut(out_mat)?.set_double_sided(parsed_mat.double_sided);
 
       material_handles.push(out_mat);
     }
@@ -143,10 +143,12 @@ impl Engine {
       scene,
       MeshNodeDescriptor {
         parent: Some(parent),
-        transform: descriptor.transform,
+        position: descriptor.position,
+        rotation: descriptor.rotation,
+        scale: descriptor.scale,
         meshes: mesh_handles,
       },
-    ))
+    )?)
   }
 }
 

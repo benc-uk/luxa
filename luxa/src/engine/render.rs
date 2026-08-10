@@ -1,7 +1,7 @@
 use std::vec;
 
-use super::{Engine, NodeHandle, SceneHandle, gpu};
-use crate::{engine::gpu::wgpu_color_from_array, helpers};
+use super::{Engine, NodeHandle, gpu};
+use crate::{CameraHandle, engine::gpu::wgpu_color_from_array, helpers};
 use glam::{Mat4, Quat};
 
 pub(crate) struct BindGroupLayouts {
@@ -41,7 +41,7 @@ impl Engine {
   }
 
   // This is the main render function, which renders a scene from the perspective of a camera node. It traverses the scene graph, collects all nodes with meshes, and renders them in depth-first order. It also handles lights and uploads their data to the GPU.
-  pub fn render(&mut self, scene_hdl: SceneHandle, camera_node: NodeHandle) -> anyhow::Result<()> {
+  pub fn render(&mut self, camera_node: CameraHandle) -> anyhow::Result<()> {
     // We can't render unless the surface is configured
     if !self.is_surface_configured {
       return Ok(());
@@ -53,7 +53,8 @@ impl Engine {
 
     // Grab what we need from the scene, including the root node and ambient light settings
     let (root, background_color, ambient_color, ambient_intensity, ibl_enabled) = {
-      let scene = self.scene(scene_hdl);
+      let scene = self.scene(self.node(camera_node.into())?.scene())?;
+
       (
         scene.root(),
         scene.background_color(),
@@ -84,7 +85,7 @@ impl Engine {
       let node = &self.nodes[node_hdl];
 
       // Handle camera node specially, have to do this here after world matrix is set
-      if node_hdl == camera_node {
+      if node_hdl == camera_node.into() {
         if let Some(vp) = node.view_proj(world_rotation, self.aspect)? {
           self.camera_uniform.view_proj = vp.to_cols_array();
           self.camera_uniform.pos = node.world_position().to_array();

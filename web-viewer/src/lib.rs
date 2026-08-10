@@ -36,7 +36,7 @@ struct CamState {
 thread_local! {
   static ENGINE: RefCell<Option<Engine>> = RefCell::new(None);
   static SCENE: Cell<Option<luxa::SceneHandle>> = Cell::new(None);
-  static CAMERA: Cell<Option<luxa::NodeHandle>> = Cell::new(None);
+  static CAMERA: Cell<Option<luxa::CameraHandle>> = Cell::new(None);
   static MODEL_NODE : Cell<Option<luxa::NodeHandle>> = Cell::new(None);
   static CAM_STATE: RefCell<CamState> = RefCell::new(CamState {
     yaw: 0.0,
@@ -47,7 +47,7 @@ thread_local! {
   });
 }
 
-const DEFAULT_MODEL: &str = "assets/models/khronos/PotOfCoals.glb";
+const DEFAULT_MODEL: &str = "assets/models/khronos/DamagedHelmet.glb";
 const DEFAULT_ENVIRONMENT: &str = "assets/ibl/colorful_studio_4k.hdr";
 
 // Marks this as the module's entry point
@@ -105,15 +105,15 @@ pub async fn load_model(path: &str) {
       MODEL_NODE.with(|cell| cell.set(Some(model)));
 
       // Get the node AABB size and use that to scale the model to 1,1,1
-      let aabb = engine.node(model).aabb().unwrap();
+      let aabb = engine.node(model).unwrap().aabb().unwrap();
       let size = aabb.size();
       let size_avg = (size.x + size.y + size.z) / 3.0;
       let center = aabb.center();
       let scale = vec3(1.0 / size_avg, 1.0 / size_avg, 1.0 / size_avg);
 
       // Move the model so that its center is at the origin, and scale it to fit in a 1x1x1 cube
-      engine.node_mut(model).set_scale(scale);
-      engine.node_mut(model).set_position(-scale * center);
+      engine.node_mut(model).unwrap().set_scale(scale);
+      engine.node_mut(model).unwrap().set_position(-scale * center);
     }
   });
 
@@ -140,12 +140,12 @@ pub async fn change_environment(path: &str) {
     match hdr_bytes.as_deref() {
       Some(hdr_bytes) => {
         engine.set_environment(hdr_bytes).expect("failed to set environment");
-        engine.scene_mut(scene_handle).set_ibl_enabled(true);
+        engine.scene_mut(scene_handle).unwrap().set_ibl_enabled(true);
       }
 
       None => {
         engine.clear_environment();
-        let scene = engine.scene_mut(scene_handle);
+        let scene = engine.scene_mut(scene_handle).unwrap();
         scene.set_ibl_enabled(false);
         scene.set_ambient_intensity(0.2);
       }
@@ -176,7 +176,7 @@ fn build_scene() {
   ENGINE.with(|cell| {
     if let Some(engine) = cell.borrow_mut().as_mut() {
       let scene_hdl = engine.create_scene(SceneDescriptor::default());
-      let scene = engine.scene_mut(scene_hdl);
+      let scene = engine.scene_mut(scene_hdl).unwrap();
       scene.set_background_color([0.1, 0.1, 0.1]);
       scene.set_ambient_intensity(0.3);
 
@@ -189,7 +189,7 @@ fn build_scene() {
           },
         )
         .unwrap();
-      engine.skybox_set_mode(luxa::SkyboxMode::EnvironmentMap, 0.0);
+      engine.skybox_set_mode(luxa::SkyboxMode::PrefilteredMap, 1.6);
 
       SCENE.with(|cell| cell.set(Some(scene_hdl)));
       CAMERA.with(|cell| cell.set(Some(camera)));
@@ -308,23 +308,26 @@ fn render_loop() {
     if let Some(engine) = cell.borrow_mut().as_mut() {
       engine.update(); // advance the time uniform so animation progresses
 
-      let scene = SCENE.with(|cell| cell.get());
       let camera = CAMERA.with(|cell| cell.get());
-      if let (Some(scene), Some(camera)) = (scene, camera) {
+      if let Some(camera) = camera {
+        let camera_node = camera;
         // let rotation = Quat::from_rotation_y(engine.t() * 2.0);
-        // engine.node_mut(camera).set_rotation(rotation);
+        // engine.node_mut(camera_node).set_rotation(rotation);
 
         // Get the camera position from the orbit camera state and update the camera node.
         let (yaw, pitch, radius) = CAM_STATE.with(|c| {
           let c = c.borrow();
           (c.yaw, c.pitch, c.radius)
         });
+
         let dir = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0) * Vec3::Z;
-        engine.node_mut(camera).set_position(dir * radius);
-        engine.node_mut(camera).look_at(vec3(0.0, 0.0, 0.0), Vec3::Y);
+        if let Ok(node) = engine.node_mut(camera_node.into()) {
+          node.set_position(dir * radius);
+          node.look_at(vec3(0.0, 0.0, 0.0), Vec3::Y);
+        }
 
         // Actually rendering the scene happens here
-        if let Err(e) = engine.render(scene, camera) {
+        if let Err(e) = engine.render(camera_node) {
           log::error!("render failed: {e:#}");
         }
       }
