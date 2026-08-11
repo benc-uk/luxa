@@ -82,7 +82,7 @@ impl Engine {
     let mut texture_cache: HashMap<(usize, wgpu::TextureFormat), TextureHandle> = HashMap::new();
 
     for parsed_mat in materials {
-      let out_mat = self.create_material(None)?;
+      let out_mat = self.create_material(crate::models::MaterialDescriptor::default())?;
 
       if let Some(base_color_texture) = parsed_mat.base_color_texture {
         let texture_handle = load_material_texture(self, &images, &mut texture_cache, base_color_texture, wgpu::TextureFormat::Rgba8UnormSrgb)?;
@@ -134,12 +134,17 @@ impl Engine {
 
     let mut mesh_handles = Vec::with_capacity(primitives.len());
     for primitive in primitives {
-      let material = primitive.material_index.map_or_else(|| self.default_material(), |index| material_handles[index]);
+      // If the user specified a material override, use that; otherwise, if the primitive has a material, use that; otherwise, use the default material
+      let material = descriptor
+        .material_override
+        .unwrap_or_else(|| primitive.material_index.map_or_else(|| self.default_material(), |i| material_handles[i]));
+
       let mesh = Mesh::new(self, primitive.vertices, primitive.indices, material);
+
       mesh_handles.push(self.store_mesh(mesh));
     }
 
-    Ok(self.create_mesh(
+    Ok(self.create_mesh_node(
       scene,
       MeshNodeDescriptor {
         parent: Some(parent),

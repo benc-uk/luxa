@@ -40,7 +40,7 @@ pub struct Mesh {
 }
 
 impl Mesh {
-  pub fn new(engine: &Engine, vertices: Vec<Vertex>, indices: Vec<u16>, material: MaterialHandle) -> Self {
+  pub(crate) fn new(engine: &Engine, vertices: Vec<Vertex>, indices: Vec<u16>, material: MaterialHandle) -> Self {
     let aabb = Aabb::from_vertices(&vertices);
     log::info!("Mesh created AABB min: {:?}, max: {:?}", aabb.min, aabb.max);
 

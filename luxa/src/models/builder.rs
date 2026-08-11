@@ -1,5 +1,5 @@
-use crate::engine::{Engine, MaterialHandle, MeshHandle};
-use crate::models::{Mesh, Vertex};
+use crate::engine::MaterialHandle;
+use crate::models::Vertex;
 
 // Returns a cube model with 24 vertices and 36 indices (6 faces, 2 triangles per face)
 pub(crate) fn primitive_cube() -> (Vec<Vertex>, Vec<u16>) {
@@ -224,32 +224,55 @@ pub(crate) fn primitive_sphere(slices: u32, stacks: u32) -> (Vec<Vertex>, Vec<u1
   (vertices, indices)
 }
 
-// Mesh builder is a chainable helper to build primative and other meshes and provide materials/textures to them
+// Mesh builder is a chainable, engine-free helper to assemble geometry (primitives or custom
+// vertices/indices) and an optional material. Insert it with `Engine::create_mesh`, which validates
+// the geometry and fills the default material when none was set.
 pub struct MeshBuilder {
   verts: Vec<Vertex>,
   indices: Vec<u16>,
-  material: MaterialHandle,
+  material: Option<MaterialHandle>,
+}
+
+impl Default for MeshBuilder {
+  fn default() -> Self {
+    Self::new()
+  }
 }
 
 impl MeshBuilder {
-  pub fn new(engine: &Engine) -> Self {
+  pub fn new() -> Self {
     Self {
       verts: Vec::new(),
       indices: Vec::new(),
-      material: engine.default_material(), // Default material is a white texture
+      material: None,
     }
   }
 
-  pub fn add_primitive_cube(mut self) -> Self {
+  // Append custom vertices. Indices address vertices as `u16`, so the total vertex count must stay
+  // within `u16::MAX + 1`; `Engine::create_mesh` enforces this.
+  pub fn vertices(mut self, vertices: impl IntoIterator<Item = Vertex>) -> Self {
+    self.verts.extend(vertices);
+    self
+  }
+
+  // Append custom indices into the vertices added so far.
+  pub fn indices(mut self, indices: impl IntoIterator<Item = u16>) -> Self {
+    self.indices.extend(indices);
+    self
+  }
+
+  pub fn cube(mut self) -> Self {
+    let base = self.verts.len() as u16;
     let (verts, indices) = primitive_cube();
     self.verts.extend(verts);
-    self.indices.extend(indices);
+    self.indices.extend(indices.into_iter().map(|idx| idx + base));
     self
   }
 
   // Add a UV sphere of radius 0.5. `slices` controls the vertical segments (longitude)
   // and `stacks` the horizontal bands (latitude); more of each means a smoother sphere.
-  pub fn add_primitive_sphere(mut self, slices: u32, stacks: u32) -> Self {
+  // Bad counts are clamped by the primitive generator rather than erroring.
+  pub fn uv_sphere(mut self, slices: u32, stacks: u32) -> Self {
     let base = self.verts.len() as u16;
     let (verts, indices) = primitive_sphere(slices, stacks);
     self.verts.extend(verts);
@@ -258,16 +281,13 @@ impl MeshBuilder {
     self
   }
 
-  pub fn set_material(mut self, material: MaterialHandle) -> Self {
-    self.material = material;
+  pub fn material(mut self, material: MaterialHandle) -> Self {
+    self.material = Some(material);
     self
   }
 
-  pub fn build(self, engine: &mut Engine) -> MeshHandle {
-    let mesh = Mesh::new(engine, self.verts, self.indices, self.material);
-
-    log::info!("MeshBuilder built mesh with blah and blah");
-
-    engine.store_mesh(mesh)
+  // Hand the assembled geometry to `Engine::create_mesh`.
+  pub(crate) fn into_parts(self) -> (Vec<Vertex>, Vec<u16>, Option<MaterialHandle>) {
+    (self.verts, self.indices, self.material)
   }
 }

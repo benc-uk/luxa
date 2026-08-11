@@ -30,14 +30,9 @@ impl Engine {
     log::info!("Resized surface to {w}x{h}, aspect ratio is now {}", self.aspect);
   }
 
-  // TODO: This is all hard coded crap while weare figuring out how to do a scene graph and testing crap
-  pub fn update(&mut self) {
-    self.frame_uniform.time = self.start_time.elapsed().as_secs_f32();
-    self.queue.write_buffer(&self.frame_uniform_buffer, 0, bytemuck::cast_slice(&[self.frame_uniform]));
-  }
-
-  pub fn t(&self) -> f32 {
-    self.frame_uniform.time
+  // Returns the time elapsed since the engine was created. Works on native and wasm.
+  pub fn elapsed_time(&self) -> web_time::Duration {
+    self.start_time.elapsed()
   }
 
   // This is the main render function, which renders a scene from the perspective of a camera node. It traverses the scene graph, collects all nodes with meshes, and renders them in depth-first order. It also handles lights and uploads their data to the GPU.
@@ -47,13 +42,17 @@ impl Engine {
       return Ok(());
     }
 
+    // Advance the frame-time uniform so time-based animation progresses.
+    self.frame_uniform.time = self.start_time.elapsed().as_secs_f32();
+    self.queue.write_buffer(&self.frame_uniform_buffer, 0, bytemuck::cast_slice(&[self.frame_uniform]));
+
     for material in self.materials.values_mut() {
       material.upload_gpu(&self.device, &self.queue, &self.textures);
     }
 
     // Grab what we need from the scene, including the root node and ambient light settings
     let (root, background_color, ambient_color, ambient_intensity, ibl_enabled) = {
-      let scene = self.scene(self.node(camera_node.into())?.scene())?;
+      let scene = self.scene(self.node(camera_node)?.scene())?;
 
       (
         scene.root(),

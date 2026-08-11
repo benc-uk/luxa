@@ -78,7 +78,7 @@ pub fn start() -> Result<(), JsValue> {
     }
 
     build_scene();
-    load_model(DEFAULT_MODEL).await;
+    load_model(DEFAULT_MODEL, "").await;
     change_environment(DEFAULT_ENVIRONMENT).await;
 
     set_message("");
@@ -88,20 +88,102 @@ pub fn start() -> Result<(), JsValue> {
   Ok(())
 }
 
+// Build the scene with the given model & HDR environment, and create a camera node.
+// The camera node is stored in a thread-local so it can be updated each frame.
+fn build_scene() {
+  ENGINE.with(|cell| {
+    if let Some(engine) = cell.borrow_mut().as_mut() {
+      let scene_hdl = engine.create_scene(SceneDescriptor::default());
+      let scene = engine.scene_mut(scene_hdl).unwrap();
+      scene.set_background_color([0.1, 0.1, 0.1]);
+      scene.set_ambient_intensity(0.3);
+
+      let camera = engine
+        .create_camera(
+          scene_hdl,
+          luxa::CameraDescriptor {
+            position: vec3(0.0, 0.0, 1.6),
+            ..Default::default()
+          },
+        )
+        .unwrap();
+
+      engine.skybox_set_mode(luxa::SkyboxMode::PrefilteredMap, 1.6);
+
+      // // A polished, realistic metal: light neutral base colour (like aluminium/steel), fully
+      // // metallic, with a low roughness so reflections stay tight.
+      // let my_material = engine
+      //   .create_material(luxa::MaterialDescriptor {
+      //     base_color_factor: [0.52, 0.53, 0.55, 1.0],
+      //     metallic_factor: 1.0,
+      //     roughness_factor: 0.35,
+      //     ..Default::default()
+      //   })
+      //   .expect("bugger");
+
+      // // A unit cube using the engine's default material.
+      // let cube = engine.create_mesh(luxa::MeshBuilder::new().cube().material(my_material)).expect("bugger");
+      // let sphere = engine.create_mesh(luxa::MeshBuilder::new().uv_sphere(32, 16).material(my_material)).expect("bugger");
+
+      // // Place the sphere in the scene, one unit up.
+      // engine
+      //   .create_mesh_node(
+      //     scene_hdl,
+      //     luxa::MeshNodeDescriptor {
+      //       position: vec3(0.0, 1.0, 0.0),
+      //       meshes: vec![sphere],
+      //       ..Default::default()
+      //     },
+      //   )
+      //   .expect("bugger");
+
+      // engine
+      //   .create_mesh_node(
+      //     scene_hdl,
+      //     luxa::MeshNodeDescriptor {
+      //       position: vec3(1.0, 1.0, 0.0),
+      //       meshes: vec![cube],
+      //       ..Default::default()
+      //     },
+      //   )
+      //   .expect("bugger");
+
+      SCENE.with(|cell| cell.set(Some(scene_hdl)));
+      CAMERA.with(|cell| cell.set(Some(camera)));
+    }
+  });
+
+  set_message("");
+}
+
 #[wasm_bindgen]
-pub async fn load_model(path: &str) {
+pub async fn load_model(path: &str, material: &str) {
   set_message("🗿 Loading model...");
   let model_bytes = fetch_bytes(path).await.expect("failed to fetch model");
+  let use_metal = material == "metal";
 
   ENGINE.with(|cell| {
     if let Some(engine) = cell.borrow_mut().as_mut() {
       let scene = SCENE.with(|cell| cell.get()).unwrap();
 
       if let Some(model) = MODEL_NODE.with(|cell| cell.get()) {
-        engine.remove_node(model);
+        let _ = engine.remove_node(model);
       }
 
-      let model = engine.load_model_bytes(scene, &model_bytes, ModelDescriptor::default()).unwrap();
+      // Optionally skin every mesh in the model with the shared metal material.
+      let material_override = use_metal.then(|| metal_material(engine));
+
+      let model = engine
+        .load_model_bytes(
+          scene,
+          &model_bytes,
+          ModelDescriptor {
+            material_override,
+            ..Default::default()
+          },
+        )
+        .unwrap();
+
       MODEL_NODE.with(|cell| cell.set(Some(model)));
 
       // Get the node AABB size and use that to scale the model to 1,1,1
@@ -118,6 +200,43 @@ pub async fn load_model(path: &str) {
   });
 
   set_message("");
+}
+
+// The render loop. This function schedules itself to be called on each animation frame.
+fn render_loop() {
+  ENGINE.with(|cell| {
+    if let Some(engine) = cell.borrow_mut().as_mut() {
+      let camera = CAMERA.with(|cell| cell.get());
+      if let Some(camera) = camera {
+        let camera_node = camera;
+
+        // Get the camera position from the orbit camera state and update the camera node.
+        let (yaw, pitch, radius) = CAM_STATE.with(|c| {
+          let c = c.borrow();
+          (c.yaw, c.pitch, c.radius)
+        });
+
+        let dir = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0) * Vec3::Z;
+        if let Ok(node) = engine.node_mut(camera_node) {
+          node.set_position(dir * radius);
+          node.look_at(vec3(0.0, 0.0, 0.0), Vec3::Y);
+        }
+
+        // Actually rendering the scene happens here
+        if let Err(e) = engine.render(camera_node) {
+          log::error!("render failed: {e:#}");
+        }
+      }
+    }
+  });
+
+  // Schedule the next frame. `once_into_js` hands the browser a one-shot JS callback (freed after it fires),
+  // and each invocation re-schedules the next, so the loop runs until the page closes.
+  let callback = Closure::once_into_js(render_loop);
+  web_sys::window()
+    .expect("no window")
+    .request_animation_frame(callback.unchecked_ref())
+    .expect("failed to request animation frame");
 }
 
 #[wasm_bindgen]
@@ -170,33 +289,16 @@ pub async fn set_skybox_mode(mode: &str) {
   });
 }
 
-// Build the scene with the given model & HDR environment, and create a camera node.
-// The camera node is stored in a thread-local so it can be updated each frame.
-fn build_scene() {
-  ENGINE.with(|cell| {
-    if let Some(engine) = cell.borrow_mut().as_mut() {
-      let scene_hdl = engine.create_scene(SceneDescriptor::default());
-      let scene = engine.scene_mut(scene_hdl).unwrap();
-      scene.set_background_color([0.1, 0.1, 0.1]);
-      scene.set_ambient_intensity(0.3);
-
-      let camera = engine
-        .create_camera(
-          scene_hdl,
-          luxa::CameraDescriptor {
-            position: vec3(0.0, 0.0, 1.6),
-            ..Default::default()
-          },
-        )
-        .unwrap();
-      engine.skybox_set_mode(luxa::SkyboxMode::PrefilteredMap, 1.6);
-
-      SCENE.with(|cell| cell.set(Some(scene_hdl)));
-      CAMERA.with(|cell| cell.set(Some(camera)));
-    }
-  });
-
-  set_message("");
+// Creates the shared polished-metal material (aluminium/steel-like, fully metallic, low roughness).
+fn metal_material(engine: &mut Engine) -> luxa::MaterialHandle {
+  engine
+    .create_material(luxa::MaterialDescriptor {
+      base_color_factor: [0.52, 0.53, 0.55, 1.0],
+      metallic_factor: 1.0,
+      roughness_factor: 0.35,
+      ..Default::default()
+    })
+    .expect("failed to create metal material")
 }
 
 // Update the loading message in the DOM. This is called from async functions, so it must be a separate function.
@@ -300,45 +402,4 @@ fn drop_pointer(e: PointerEvent) {
     c.pointers.retain(|p| p.id != e.pointer_id());
     c.pinch_dist = None;
   });
-}
-
-// The render loop. This function schedules itself to be called on each animation frame.
-fn render_loop() {
-  ENGINE.with(|cell| {
-    if let Some(engine) = cell.borrow_mut().as_mut() {
-      engine.update(); // advance the time uniform so animation progresses
-
-      let camera = CAMERA.with(|cell| cell.get());
-      if let Some(camera) = camera {
-        let camera_node = camera;
-        // let rotation = Quat::from_rotation_y(engine.t() * 2.0);
-        // engine.node_mut(camera_node).set_rotation(rotation);
-
-        // Get the camera position from the orbit camera state and update the camera node.
-        let (yaw, pitch, radius) = CAM_STATE.with(|c| {
-          let c = c.borrow();
-          (c.yaw, c.pitch, c.radius)
-        });
-
-        let dir = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0) * Vec3::Z;
-        if let Ok(node) = engine.node_mut(camera_node.into()) {
-          node.set_position(dir * radius);
-          node.look_at(vec3(0.0, 0.0, 0.0), Vec3::Y);
-        }
-
-        // Actually rendering the scene happens here
-        if let Err(e) = engine.render(camera_node) {
-          log::error!("render failed: {e:#}");
-        }
-      }
-    }
-  });
-
-  // Schedule the next frame. `once_into_js` hands the browser a one-shot JS callback (freed after it fires),
-  // and each invocation re-schedules the next, so the loop runs until the page closes.
-  let callback = Closure::once_into_js(render_loop);
-  web_sys::window()
-    .expect("no window")
-    .request_animation_frame(callback.unchecked_ref())
-    .expect("failed to request animation frame");
 }

@@ -76,10 +76,54 @@ pub struct Material {
   bind_group_dirty: bool,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum AlphaMode {
+  #[default]
   Opaque,
   Mask,
   Blend,
+}
+
+/// Describes a material for `Engine::create_material`. Factors and flags mirror the glTF metallic-
+/// roughness model; texture handles are optional and fall back to the engine's neutral defaults
+/// when `None`.
+#[derive(Debug, Clone)]
+pub struct MaterialDescriptor {
+  pub base_color_factor: [f32; 4],
+  pub metallic_factor: f32,
+  pub roughness_factor: f32,
+  pub emissive_factor: [f32; 3],
+  pub normal_scale: f32,
+  pub occlusion_strength: f32,
+  pub alpha_mode: AlphaMode,
+  pub alpha_cutoff: f32,
+  pub double_sided: bool,
+  pub base_color_texture: Option<TextureHandle>,
+  pub metallic_roughness_texture: Option<TextureHandle>,
+  pub normal_texture: Option<TextureHandle>,
+  pub occlusion_texture: Option<TextureHandle>,
+  pub emissive_texture: Option<TextureHandle>,
+}
+
+impl Default for MaterialDescriptor {
+  fn default() -> Self {
+    Self {
+      base_color_factor: [1.0, 1.0, 1.0, 1.0],
+      metallic_factor: 0.0,
+      roughness_factor: 0.5,
+      emissive_factor: [0.0, 0.0, 0.0],
+      normal_scale: 1.0,
+      occlusion_strength: 1.0,
+      alpha_mode: AlphaMode::Opaque,
+      alpha_cutoff: 0.5,
+      double_sided: false,
+      base_color_texture: None,
+      metallic_roughness_texture: None,
+      normal_texture: None,
+      occlusion_texture: None,
+      emissive_texture: None,
+    }
+  }
 }
 
 #[repr(C)]

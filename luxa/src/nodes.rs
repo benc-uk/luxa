@@ -135,12 +135,28 @@ impl Node {
     self.world_matrix.w_axis.truncate()
   }
 
-  pub fn set_position(&mut self, position: Vec3) {
-    self.transform.position = position;
-    self.update();
+  pub fn transform(&self) -> Transform {
+    self.transform
   }
 
-  pub fn set_rotation(&mut self, rotation: Quat) {
+  pub fn set_transform(&mut self, transform: Transform) -> &mut Self {
+    self.transform = transform;
+
+    if let NodeKind::Camera(camera) = &mut self.kind {
+      camera.orientation = CameraOrientation::NodeRotation;
+    }
+
+    self.update();
+    self
+  }
+
+  pub fn set_position(&mut self, position: Vec3) -> &mut Self {
+    self.transform.position = position;
+    self.update();
+    self
+  }
+
+  pub fn set_rotation(&mut self, rotation: Quat) -> &mut Self {
     self.transform.rotation = rotation;
 
     if let NodeKind::Camera(camera) = &mut self.kind {
@@ -148,32 +164,35 @@ impl Node {
     }
 
     self.update();
+    self
   }
 
   pub fn set_world_matrix(&mut self, world_matrix: Mat4) {
     self.world_matrix = world_matrix;
   }
 
-  pub fn look_at(&mut self, target: Vec3, up: Vec3) {
+  pub fn look_at(&mut self, target: Vec3, up: Vec3) -> &mut Self {
     // Cameras are a special case
     if let NodeKind::Camera(camera) = &mut self.kind {
       camera.orientation = CameraOrientation::LookAt { target, up };
-      return;
+      return self;
     }
 
     // For non-camera nodes, we can just set the rotation to look at the target point.
     let direction = target - self.transform.position;
     if direction.length_squared() <= 1e-12 {
-      return;
+      return self;
     }
 
     self.transform.rotation = Quat::from_rotation_arc(Vec3::NEG_Z, direction.normalize());
     self.update();
+    self
   }
 
-  pub fn set_scale(&mut self, scale: Vec3) {
+  pub fn set_scale(&mut self, scale: Vec3) -> &mut Self {
     self.transform.scale = scale;
     self.update();
+    self
   }
 
   pub fn position(&self) -> Vec3 {

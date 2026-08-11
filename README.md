@@ -77,9 +77,14 @@ WebGPU surface
 
 The public API exports:
 
-- `Engine`, `SceneHandle`, `Node3DHandle`, `MeshHandle`, `MaterialHandle` and `TextureHandle`.
-- `Node3D`, `Mesh`, `MeshBuilder`, `Material`, `Vertex` and `AlphaMode`.
-- `Aabb`, `Color`, `Size` and `SkyboxMode`.
+- `Engine` and `SkyboxMode`.
+- Handles: `SceneHandle`, `NodeHandle`, `CameraHandle`, `LightHandle`, `MeshHandle`,
+  `MaterialHandle` and `TextureHandle`.
+- Descriptors: `SceneDescriptor`, `NodeDescriptor`, `CameraDescriptor`, `LightDescriptor`,
+  `MeshNodeDescriptor`, `ModelDescriptor` and `MaterialDescriptor`.
+- `Node`, `Transform`, `CameraOrientation`, `Mesh`, `MeshBuilder`, `Material`, `Vertex` and
+  `AlphaMode`.
+- `Aabb`, `Color` and `Size`.
 
 ## Getting started
 
@@ -115,39 +120,104 @@ The following shows the engine-side flow after an application has created a surf
 chosen its initial dimensions:
 
 ```rust
-use glam::{Quat, Vec3};
-use luxa::Engine;
+use glam::Vec3;
+use luxa::{CameraDescriptor, CameraOrientation, Engine, ModelDescriptor, SceneDescriptor};
 
 let mut engine = Engine::new(surface_target, (width, height)).await?;
 
-let scene = engine.create_scene();
-let root = engine.scene(scene).root();
-engine.scene_mut(scene).set_background_color([0.02, 0.02, 0.03]);
+let scene = engine.create_scene(SceneDescriptor {
+  background_color: [0.02, 0.02, 0.03],
+  ..Default::default()
+});
 
-let camera = engine.create_camera_node(
-  root,
-  Vec3::new(0.0, 1.0, 4.0),
-  Vec3::ZERO,
-  Vec3::ONE,
-  60.0, // vertical field of view in degrees
-  0.1,
-  200.0,
-);
+let camera = engine.create_camera(
+  scene,
+  CameraDescriptor {
+    position: Vec3::new(0.0, 1.0, 4.0),
+    orientation: CameraOrientation::LookAt { target: Vec3::ZERO, up: Vec3::Y },
+    fov_degrees: 60.0,
+    far_plane: 200.0,
+    ..Default::default()
+  },
+)?;
 
-let model = engine.load_gltf("assets/model.glb", root)?;
-engine.node_mut(model).set_rotation(Quat::IDENTITY);
+let model = engine.load_model(scene, "assets/model.glb", ModelDescriptor::default())?;
 
 // Once per frame:
-engine.update();
-engine.render(scene, camera)?;
+engine.node_mut(camera)?.set_position(orbit_position);
+engine.render(camera)?;
 ```
 
-Use `load_gltf_bytes` when asset bytes have already been fetched, as in a browser. Call `resize`
+Use `load_model_bytes` when asset bytes have already been fetched, as in a browser. Call `resize`
 when the target dimensions change. HDR bytes can be passed to `set_environment`, then IBL can be
-enabled on individual scenes with `scene_mut(...).set_ibl_enabled(true)`.
+enabled on individual scenes with `scene_mut(...)?.set_ibl_enabled(true)`.
 
 The [`web-viewer`](web-viewer/) is the complete reference for canvas setup, asynchronous asset
 loading, orbit controls and `requestAnimationFrame` integration.
+
+## Building meshes
+
+`MeshBuilder` assembles geometry and an optional material. It holds no engine reference, so you
+build it standalone and hand it to `Engine::create_mesh`, which validates the geometry, fills in the
+default material when none was set, and returns a `MeshHandle`. Attach the mesh to a scene with
+`create_mesh_node`.
+
+### Primitive meshes
+
+```rust
+use glam::Vec3;
+use luxa::{MaterialDescriptor, MeshBuilder, MeshNodeDescriptor};
+
+// A unit cube using the engine's default material.
+let cube = engine.create_mesh(MeshBuilder::new().cube())?;
+
+// A red-ish, mostly-rough material.
+let red = engine.create_material(MaterialDescriptor {
+  base_color_factor: [0.8, 0.1, 0.1, 1.0],
+  roughness_factor: 0.4,
+  ..Default::default()
+})?;
+
+// A smooth UV sphere using that material.
+let sphere = engine.create_mesh(MeshBuilder::new().uv_sphere(32, 16).material(red))?;
+
+// Place the sphere in the scene, one unit up.
+engine.create_mesh_node(
+  scene,
+  MeshNodeDescriptor {
+    position: Vec3::new(0.0, 1.0, 0.0),
+    meshes: vec![sphere],
+    ..Default::default()
+  },
+)?;
+```
+
+`cube()` and `uv_sphere(slices, stacks)` are chainable and each appends to the geometry already in
+the builder, so one mesh can combine several primitives. `uv_sphere` clamps `slices` to at least 3
+and `stacks` to at least 2 rather than erroring.
+
+### Custom geometry
+
+Supply your own vertices and indices. A `Vertex` carries a position, texture coordinate, normal and
+tangent (the `w` of the tangent is the handedness sign):
+
+```rust
+use luxa::{MeshBuilder, Vertex};
+
+let triangle = engine.create_mesh(
+  MeshBuilder::new()
+    .vertices([
+      Vertex { position: [-0.5, -0.5, 0.0], tex_coord: [0.0, 1.0], normal: [0.0, 0.0, 1.0], tangent: [1.0, 0.0, 0.0, 1.0] },
+      Vertex { position: [0.5, -0.5, 0.0], tex_coord: [1.0, 1.0], normal: [0.0, 0.0, 1.0], tangent: [1.0, 0.0, 0.0, 1.0] },
+      Vertex { position: [0.0, 0.5, 0.0], tex_coord: [0.5, 0.0], normal: [0.0, 0.0, 1.0], tangent: [1.0, 0.0, 0.0, 1.0] },
+    ])
+    .indices([0, 1, 2]),
+)?;
+```
+
+Indices are `u16`, so a single mesh is limited to `u16::MAX + 1` (65536) vertices. `create_mesh`
+returns an error for empty geometry, out-of-range indices, an invalid material handle, or too many
+vertices.
 
 ## Run the web viewer
 

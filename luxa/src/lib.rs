@@ -9,7 +9,7 @@ mod transform;
 
 pub use common::{Aabb, Color, Size};
 pub use engine::{Engine, SkyboxMode};
-pub use models::{AlphaMode, Material, Mesh, MeshBuilder, Vertex};
+pub use models::{AlphaMode, Material, MaterialDescriptor, Mesh, MeshBuilder, Vertex};
 pub use nodes::Node;
 pub use transform::Transform;
 

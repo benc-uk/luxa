@@ -13,12 +13,23 @@ new_key_type! {
   pub struct SceneHandle;
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct NodeDescriptor {
   pub parent: Option<NodeHandle>,
   pub position: glam::Vec3,
   pub rotation: glam::Quat,
   pub scale: glam::Vec3,
+}
+
+impl Default for NodeDescriptor {
+  fn default() -> Self {
+    Self {
+      parent: None,
+      position: glam::Vec3::ZERO,
+      rotation: glam::Quat::IDENTITY,
+      scale: glam::Vec3::ONE,
+    }
+  }
 }
 
 impl Engine {
@@ -51,12 +62,47 @@ impl Engine {
     Ok(handle)
   }
 
-  pub fn create_material(&mut self, texture: Option<TextureHandle>) -> anyhow::Result<MaterialHandle> {
+  pub fn create_material(&mut self, desc: crate::models::MaterialDescriptor) -> anyhow::Result<MaterialHandle> {
+    // Validate any supplied texture handles up front.
+    for texture in [
+      desc.base_color_texture,
+      desc.metallic_roughness_texture,
+      desc.normal_texture,
+      desc.occlusion_texture,
+      desc.emissive_texture,
+    ]
+    .into_iter()
+    .flatten()
+    {
+      anyhow::ensure!(self.textures.contains_key(texture), "Invalid texture handle");
+    }
+
     let mut material = Material::new(&self.device, &self.bind_group_layouts.material, &self.material_fallbacks, &self.textures);
 
-    if let Some(texture) = texture {
-      anyhow::ensure!(self.textures.contains_key(texture), "Invalid texture handle");
+    material.set_base_color_factor(desc.base_color_factor);
+    material.set_metallic_factor(desc.metallic_factor);
+    material.set_roughness_factor(desc.roughness_factor);
+    material.set_emissive_factor(desc.emissive_factor);
+    material.set_normal_scale(desc.normal_scale);
+    material.set_occlusion_strength(desc.occlusion_strength);
+    material.set_alpha_mode(desc.alpha_mode);
+    material.set_alpha_cutoff(desc.alpha_cutoff);
+    material.set_double_sided(desc.double_sided);
+
+    if let Some(texture) = desc.base_color_texture {
       material.set_base_color_texture(texture);
+    }
+    if let Some(texture) = desc.metallic_roughness_texture {
+      material.set_metallic_roughness_texture(texture);
+    }
+    if let Some(texture) = desc.normal_texture {
+      material.set_normal_texture(texture);
+    }
+    if let Some(texture) = desc.occlusion_texture {
+      material.set_occlusion_texture(texture);
+    }
+    if let Some(texture) = desc.emissive_texture {
+      material.set_emissive_texture(texture);
     }
 
     let handle = self.materials.insert(material);
@@ -87,27 +133,65 @@ impl Engine {
     Ok(self.attach(node, parent)?)
   }
 
-  pub fn remove_node(&mut self, handle: NodeHandle) {
+  pub fn remove_node(&mut self, handle: impl Into<NodeHandle>) -> anyhow::Result<()> {
+    let handle = handle.into();
+    anyhow::ensure!(self.node(handle)?.parent().is_some(), "cannot remove the scene root node");
+    self.remove_node_recursive(handle);
+    Ok(())
+  }
+
+  fn remove_node_recursive(&mut self, handle: NodeHandle) {
     if let Some(node) = self.nodes.remove(handle) {
-      if let Some(parent_handle) = node.parent() {
-        if let Some(parent_node) = self.nodes.get_mut(parent_handle) {
-          parent_node.remove_child(handle);
-        }
+      if let Some(parent_handle) = node.parent()
+        && let Some(parent_node) = self.nodes.get_mut(parent_handle)
+      {
+        parent_node.remove_child(handle);
       }
 
       for &child_handle in node.children() {
-        self.remove_node(child_handle);
+        self.remove_node_recursive(child_handle);
       }
-    } else {
-      log::warn!("Attempted to remove non-existent node with handle {:?}", handle);
     }
   }
 
-  pub fn create_mesh(&mut self, scene: SceneHandle, desc: MeshNodeDescriptor) -> anyhow::Result<NodeHandle> {
+  pub fn remove_scene(&mut self, scene: SceneHandle) -> anyhow::Result<()> {
+    anyhow::ensure!(self.scenes.contains_key(scene), "Invalid scene handle");
+    self.nodes.retain(|_, node| node.scene() != scene);
+    self.scenes.remove(scene);
+    Ok(())
+  }
+
+  pub fn create_mesh_node(&mut self, scene: SceneHandle, desc: MeshNodeDescriptor) -> anyhow::Result<NodeHandle> {
     let parent = self.resolve_parent(scene, desc.parent)?;
 
     let node = Node::new_mesh(&self.device, &self.bind_group_layouts.node, &self.meshes, desc);
     Ok(self.attach(node, parent)?)
+  }
+
+  // Validates and inserts a mesh resource built by a `MeshBuilder`, returning its handle.
+  pub fn create_mesh(&mut self, builder: crate::models::MeshBuilder) -> anyhow::Result<MeshHandle> {
+    let (vertices, indices, material) = builder.into_parts();
+
+    anyhow::ensure!(!vertices.is_empty(), "mesh has no vertices");
+    anyhow::ensure!(!indices.is_empty(), "mesh has no indices");
+    anyhow::ensure!(
+      vertices.len() <= u16::MAX as usize + 1,
+      "mesh has too many vertices for u16 indices (max {})",
+      u16::MAX as usize + 1
+    );
+    let vertex_count = vertices.len() as u32;
+    anyhow::ensure!(indices.iter().all(|&i| (i as u32) < vertex_count), "mesh index out of bounds");
+
+    let material = match material {
+      Some(material) => {
+        anyhow::ensure!(self.materials.contains_key(material), "Invalid material handle");
+        material
+      }
+      None => self.default_material(),
+    };
+
+    let mesh = Mesh::new(self, vertices, indices, material);
+    Ok(self.store_mesh(mesh))
   }
 
   pub fn create_camera(&mut self, scene: SceneHandle, desc: CameraDescriptor) -> anyhow::Result<CameraHandle> {
@@ -161,16 +245,12 @@ impl Engine {
     self.meshes.get(handle).ok_or_else(|| anyhow::anyhow!("Invalid mesh handle"))
   }
 
-  pub fn mesh_mut(&mut self, handle: MeshHandle) -> anyhow::Result<&mut Mesh> {
-    self.meshes.get_mut(handle).ok_or_else(|| anyhow::anyhow!("Invalid mesh handle"))
+  pub fn node(&self, handle: impl Into<NodeHandle>) -> anyhow::Result<&Node> {
+    self.nodes.get(handle.into()).ok_or_else(|| anyhow::anyhow!("Invalid node handle"))
   }
 
-  pub fn node(&self, handle: NodeHandle) -> anyhow::Result<&Node> {
-    self.nodes.get(handle).ok_or_else(|| anyhow::anyhow!("Invalid node handle"))
-  }
-
-  pub fn node_mut(&mut self, handle: NodeHandle) -> anyhow::Result<&mut Node> {
-    self.nodes.get_mut(handle).ok_or_else(|| anyhow::anyhow!("Invalid node handle"))
+  pub fn node_mut(&mut self, handle: impl Into<NodeHandle>) -> anyhow::Result<&mut Node> {
+    self.nodes.get_mut(handle.into()).ok_or_else(|| anyhow::anyhow!("Invalid node handle"))
   }
 
   fn resolve_parent(&self, scene: SceneHandle, parent: Option<NodeHandle>) -> anyhow::Result<NodeHandle> {

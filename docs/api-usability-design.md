@@ -24,6 +24,21 @@ The redesigned API will:
 This is one intentional breaking change before `0.1`. The old API will be removed rather than
 deprecated because Luxa is not yet published and has no stability promise.
 
+### Revised during implementation
+
+Two decisions changed once the code was written, because they proved simpler and better:
+
+- **Scene ownership is stored, not derived.** Each node stores its owning `SceneHandle` (set when it
+  is attached, inherited from its parent; the root's is set at scene creation), so membership checks
+  and parent validation are an O(1) comparison. This supersedes the original plan of walking a
+  node's parent chain to a root, which was O(depth) and left handles from different scenes silently
+  mixable. It intentionally reverses the earlier "do not duplicate the scene handle on every node"
+  note: the field is 8 bytes and never changes after creation.
+- **`render` takes only the camera.** The camera stores its scene, so `render(camera)` derives which
+  scene graph to traverse. Swapping between several resident scenes becomes "render a different
+  camera", and a camera can never be rendered against the wrong scene. This replaces the earlier
+  `render(scene, camera)` signature.
+
 ## Explicitly deferred
 
 The following are not part of this work:
@@ -72,7 +87,7 @@ engine.node_mut(model)?.set_transform(Transform {
 
 // Once per frame
 engine.node_mut(camera)?.set_position(orbit_position);
-engine.render(scene, camera)?;
+engine.render(camera)?;
 ```
 
 The user retains handles only for objects needed across frames. The scene root is not retrieved or
@@ -231,13 +246,15 @@ impl Engine {
 
   // Frame lifecycle
   pub fn resize(&mut self, size: Size);
-  pub fn render(&mut self, scene: SceneHandle, camera: CameraHandle) -> Result<()>;
+  pub fn render(&mut self, camera: CameraHandle) -> Result<()>;
   pub fn elapsed_time(&self) -> Duration;
 }
 ```
 
-Existing environment, material and texture APIs remain unchanged during this work. They can receive
-their own descriptor redesign later without blocking the scene and node usability improvements.
+Materials now follow the same descriptor pattern: `create_material(MaterialDescriptor)` returns a
+`MaterialHandle`, with all metallic-roughness factors, alpha settings and optional texture handles on
+the descriptor. Post-creation tweaks still go through `material_mut`. Environment and texture APIs
+remain unchanged and can receive their own descriptor redesign later.
 
 ### Node methods
 
@@ -259,11 +276,11 @@ the given target and up; on any other node it sets the node rotation directly.
 
 ## Mesh construction and custom meshes
 
-Status: open, needs a decision before implementation.
+Status: implemented.
 
-### Current state
+### Before
 
-`MeshBuilder` borrows the engine on construction and inserts on build:
+`MeshBuilder` used to borrow the engine on construction and insert on build:
 
 ```rust
 let mesh = MeshBuilder::new(&engine)
@@ -280,9 +297,9 @@ Problems:
 - The name collides with node creation: today's `create_mesh` builds a mesh _node_, not a mesh
   resource.
 
-### Proposed direction
+### Design
 
-Separate the mesh _resource_ from the mesh _node_, and make the builder engine-free:
+The mesh _resource_ is separated from the mesh _node_, and the builder is engine-free:
 
 ```rust
 let mesh = engine.create_mesh(
@@ -317,20 +334,20 @@ impl MeshBuilder {
   index bounds, material handles and the `u16` vertex limit.
 - `Mesh::new` and arena insertion become private; `mesh_mut` is removed.
 
-### Open questions
+### Decisions
 
-- Should the builder default the material itself, or leave it unset and let `create_mesh` fill it?
-  Deferring to `create_mesh` is what keeps the builder engine-free.
-- Should `uv_sphere` clamp bad slice and stack counts (as the current primitive does) or return
-  `Result`? Clamping keeps it usable in a plain chain without a `?`.
-- Should custom geometry accept `u32` indices to lift the vertex ceiling? Out of scope for now, but
-  the `u16` limit should be documented on `vertices`/`indices`.
+- The builder leaves the material unset (`Option<MaterialHandle>`); `Engine::create_mesh` fills the
+  default when none was set, which keeps the builder engine-free.
+- `uv_sphere` clamps bad slice and stack counts rather than returning `Result`, so it stays usable
+  in a plain chain without a `?`.
+- Indices remain `u16`; `Engine::create_mesh` rejects geometry above `u16::MAX + 1` vertices.
+  Lifting the ceiling to `u32` is deferred.
 
 ## Internal changes
 
 - Rename `Node3D` to `Node` and `Node3DHandle` to `NodeHandle`.
-- Validate scene membership by following a node's parent chain and comparing its root with the
-  scene's root. Do not duplicate the scene handle on every node.
+- Store the owning `SceneHandle` on each node (set at attach time, inherited from the parent; the
+  root's is set at scene creation) and validate membership with an O(1) comparison.
 - Build camera view matrices from the node's world position and its `CameraOrientation`.
 - Prevent root-node removal through the public API.
 - Validate every public handle before indexing a slot map.
@@ -352,7 +369,7 @@ impl MeshBuilder {
 | `load_model_bytes(bytes, root)`                | `load_model_bytes(scene, bytes, ModelDescriptor::default())` |
 | Multiple transform setter lookups              | `node_mut(node)?.set_transform(transform)`                   |
 | `MeshBuilder::new(&engine).build(&mut engine)` | `engine.create_mesh(MeshBuilder::new()...)`                  |
-| `update(); render(scene, camera)`              | `render(scene, camera)` using a typed `CameraHandle`         |
+| `update(); render(scene, camera)`              | `render(camera)` using a typed `CameraHandle`                |
 | `t()`                                          | `elapsed_time()`                                             |
 
 ## Implementation plan
@@ -369,10 +386,12 @@ Complete when `luxa` compiles with the new types.
 
 ### 2. Add scene membership validation
 
-- Add an internal ancestry check that follows parent handles to a root node.
-- Validate explicit parents and render cameras by comparing that root with the selected scene root.
+- Store the owning scene on each node, set when the node is attached (inherited from its parent) and
+  at scene creation for the root.
+- Validate an explicit parent with an O(1) scene comparison; derive the render scene from the
+  camera's stored scene.
 
-Complete when cross-scene parents and cameras return errors.
+Complete when cross-scene parents return errors and a camera renders its own scene.
 
 ### 3. Replace creation and loading methods
 
@@ -390,7 +409,7 @@ Complete when no public creation or loading path requires a root handle.
 - Move time advancement into `render`.
 - Replace `t` with `elapsed_time`.
 
-Complete when a frame is rendered with `engine.render(scene, camera)?` and no separate `update`.
+Complete when a frame is rendered with `engine.render(camera)?` and no separate `update`.
 
 ### 5. Rethink and replace mesh construction
 
@@ -417,9 +436,9 @@ before.
 
 - The viewer stores scene, camera and model handles, but no root handle.
 - No public constructor has more than a scene handle and one descriptor argument.
-- The normal frame loop contains `render(scene, camera)` and no `update()` call.
+- The normal frame loop contains `render(camera)` and no `update()` call.
 - A non-camera node cannot be passed to `render`.
-- Cross-scene parents and cameras return errors.
+- Cross-scene parents return errors, and `render(camera)` always renders the camera's own scene.
 - Removed or invalid handles do not panic in public methods.
 - Moving a camera preserves its look-at target, and parent transforms affect its world-space eye
   position.

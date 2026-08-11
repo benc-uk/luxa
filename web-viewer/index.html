@@ -153,6 +153,7 @@
           <option value="assets/models/khronos/PotOfCoals.glb">Pot of Coals</option>
           <option value="assets/models/khronos/WaterBottle.glb">Water Bottle</option>
           <option value="assets/models/khronos/Duck.glb">Duck</option>
+          <option value="assets/models/khronos/Duck.glb" data-material="metal">Duck (Metal)</option>
           <option value="assets/models/polyhaven/brass_vase_03_2k.glb">Brass Vase</option>
           <option value="assets/models/polyhaven/portable_searchlight_2k.glb">Portable Searchlight</option>
           <option value="assets/models/polyhaven/Television_01_4k.glb">Television</option>
@@ -191,7 +192,8 @@
       const skyboxModeSelect = document.getElementById('skybox-mode-select');
 
       modelSelect.addEventListener('change', () => {
-        window.load_model(modelSelect.value);
+        const option = modelSelect.selectedOptions[0];
+        window.load_model(modelSelect.value, option.dataset.material ?? '');
       });
 
       bgSelect.addEventListener('change', () => {
