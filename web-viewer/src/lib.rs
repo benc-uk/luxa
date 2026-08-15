@@ -5,8 +5,9 @@
 // For now this is just a "hello world" that proves the wasm toolchain, logging and DOM access work.
 // ===================================================================================================
 mod js_helpers;
+mod orbit_controls;
 
-use js_helpers::{add_listener, fetch_bytes};
+use js_helpers::{canvas_by_id, fetch_bytes, init_browser_logging, request_animation_frame, set_element_html};
 use luxa::Engine;
 use luxa::ModelDescriptor;
 use luxa::SceneDescriptor;
@@ -14,37 +15,12 @@ use luxa::SceneDescriptor;
 use luxa::glam::{EulerRot, Quat, Vec3, vec3};
 use std::cell::{Cell, RefCell};
 use wasm_bindgen::prelude::*;
-use web_sys::{PointerEvent, WheelEvent};
-
-// One tracked pointer (mouse button held, finger, or pen) and its last-seen canvas position.
-struct Pointer {
-  id: i32,
-  x: f64,
-  y: f64,
-}
-
-struct CamState {
-  yaw: f32,
-  pitch: f32,
-  radius: f32,
-  // Pointers currently pressed on the canvas. 1 => orbit drag, 2 => pinch zoom.
-  pointers: Vec<Pointer>,
-  // Distance between the two fingers on the previous pinch frame, for computing the delta.
-  pinch_dist: Option<f64>,
-}
 
 thread_local! {
   static ENGINE: RefCell<Option<Engine>> = RefCell::new(None);
   static SCENE: Cell<Option<luxa::SceneHandle>> = Cell::new(None);
   static CAMERA: Cell<Option<luxa::CameraHandle>> = Cell::new(None);
   static MODEL_NODE : Cell<Option<luxa::NodeHandle>> = Cell::new(None);
-  static CAM_STATE: RefCell<CamState> = RefCell::new(CamState {
-    yaw: 0.0,
-    pitch: 0.0,
-    radius: 1.6,
-    pointers: Vec::new(),
-    pinch_dist: None,
-  });
 }
 
 const DEFAULT_MODEL: &str = "assets/models/khronos/DamagedHelmet.glb";
@@ -53,21 +29,13 @@ const DEFAULT_ENVIRONMENT: &str = "assets/ibl/colorful_studio_4k.hdr";
 // Marks this as the module's entry point
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
-  // Route Rust panics to the browser console with a readable stack trace instead of an opaque "unreachable".
-  console_error_panic_hook::set_once();
-  console_log::init_with_level(log::Level::Info).ok();
-
-  // need to get the canvas element from the DOM and pass it to luxa::Engine::new() as a surface target
-  let document = web_sys::window().and_then(|window| window.document()).ok_or_else(|| JsValue::from_str("no document"))?;
-  let canvas = document
-    .get_element_by_id("canvas")
-    .ok_or_else(|| JsValue::from_str("no canvas element with id 'canvas'"))?;
-  let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().map_err(|_| JsValue::from_str("element with id 'canvas' is not a canvas"))?;
+  init_browser_logging();
+  let canvas = canvas_by_id("canvas")?;
 
   // Everything that is async must be inside this block, because of reasons
   wasm_bindgen_futures::spawn_local(async move {
     let size = (canvas.width(), canvas.height());
-    setup_input(&canvas);
+    orbit_controls::attach(&canvas);
 
     match Engine::new_from_canvas(canvas, size).await {
       Ok(engine) => {
@@ -109,44 +77,6 @@ fn build_scene() {
         .unwrap();
 
       engine.skybox_set_mode(luxa::SkyboxMode::PrefilteredMap, 1.6);
-
-      // // A polished, realistic metal: light neutral base colour (like aluminium/steel), fully
-      // // metallic, with a low roughness so reflections stay tight.
-      // let my_material = engine
-      //   .create_material(luxa::MaterialDescriptor {
-      //     base_color_factor: [0.52, 0.53, 0.55, 1.0],
-      //     metallic_factor: 1.0,
-      //     roughness_factor: 0.35,
-      //     ..Default::default()
-      //   })
-      //   .expect("bugger");
-
-      // // A unit cube using the engine's default material.
-      // let cube = engine.create_mesh(luxa::MeshBuilder::new().cube().material(my_material)).expect("bugger");
-      // let sphere = engine.create_mesh(luxa::MeshBuilder::new().uv_sphere(32, 16).material(my_material)).expect("bugger");
-
-      // // Place the sphere in the scene, one unit up.
-      // engine
-      //   .create_mesh_node(
-      //     scene_hdl,
-      //     luxa::MeshNodeDescriptor {
-      //       position: vec3(0.0, 1.0, 0.0),
-      //       meshes: vec![sphere],
-      //       ..Default::default()
-      //     },
-      //   )
-      //   .expect("bugger");
-
-      // engine
-      //   .create_mesh_node(
-      //     scene_hdl,
-      //     luxa::MeshNodeDescriptor {
-      //       position: vec3(1.0, 1.0, 0.0),
-      //       meshes: vec![cube],
-      //       ..Default::default()
-      //     },
-      //   )
-      //   .expect("bugger");
 
       SCENE.with(|cell| cell.set(Some(scene_hdl)));
       CAMERA.with(|cell| cell.set(Some(camera)));
@@ -211,10 +141,7 @@ fn render_loop() {
         let camera_node = camera;
 
         // Get the camera position from the orbit camera state and update the camera node.
-        let (yaw, pitch, radius) = CAM_STATE.with(|c| {
-          let c = c.borrow();
-          (c.yaw, c.pitch, c.radius)
-        });
+        let (yaw, pitch, radius) = orbit_controls::state();
 
         let dir = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0) * Vec3::Z;
         if let Ok(node) = engine.node_mut(camera_node) {
@@ -230,13 +157,8 @@ fn render_loop() {
     }
   });
 
-  // Schedule the next frame. `once_into_js` hands the browser a one-shot JS callback (freed after it fires),
-  // and each invocation re-schedules the next, so the loop runs until the page closes.
-  let callback = Closure::once_into_js(render_loop);
-  web_sys::window()
-    .expect("no window")
-    .request_animation_frame(callback.unchecked_ref())
-    .expect("failed to request animation frame");
+  // Each invocation schedules the next, so the loop runs until the page closes.
+  request_animation_frame(render_loop).expect("failed to request animation frame");
 }
 
 #[wasm_bindgen]
@@ -303,103 +225,5 @@ fn metal_material(engine: &mut Engine) -> luxa::MaterialHandle {
 
 // Update the loading message in the DOM. This is called from async functions, so it must be a separate function.
 fn set_message(message: &str) {
-  let document = web_sys::window()
-    .and_then(|window| window.document())
-    .ok_or_else(|| JsValue::from_str("no document"))
-    .unwrap();
-  if let Some(message_div) = document.get_element_by_id("message") {
-    message_div.set_inner_html(message);
-  }
-}
-
-fn setup_input(canvas: &web_sys::HtmlCanvasElement) {
-  let target: &web_sys::EventTarget = canvas.as_ref();
-
-  // A pointer went down: start tracking it and grab pointer capture so we keep
-  // receiving its move/up events even if it strays outside the canvas mid-drag.
-  // `canvas` is a JS handle, so cloning it is cheap (it just bumps a reference).
-  let canvas_dn = canvas.clone();
-  add_listener::<PointerEvent, _>(target, "pointerdown", move |e| {
-    e.prevent_default();
-    let id = e.pointer_id();
-    let _ = canvas_dn.set_pointer_capture(id);
-    CAM_STATE.with(|c| {
-      let mut c = c.borrow_mut();
-      let (x, y) = (e.client_x() as f64, e.client_y() as f64);
-      if let Some(p) = c.pointers.iter_mut().find(|p| p.id == id) {
-        p.x = x;
-        p.y = y;
-      } else {
-        c.pointers.push(Pointer { id, x, y });
-      }
-      // Reset the pinch baseline; it's re-measured on the next two-finger move.
-      c.pinch_dist = None;
-    });
-  });
-
-  // A pointer moved: one pointer orbits, two pointers pinch-zoom.
-  add_listener::<PointerEvent, _>(target, "pointermove", |e| {
-    CAM_STATE.with(|c| {
-      let mut c = c.borrow_mut();
-      let id = e.pointer_id();
-      let (x, y) = (e.client_x() as f64, e.client_y() as f64);
-
-      // Ignore moves for pointers we're not tracking (e.g. hover with no button down).
-      let Some(idx) = c.pointers.iter().position(|p| p.id == id) else {
-        return;
-      };
-      let (px, py) = (c.pointers[idx].x, c.pointers[idx].y);
-      c.pointers[idx].x = x;
-      c.pointers[idx].y = y;
-
-      match c.pointers.len() {
-        1 => {
-          // Single finger / mouse drag => orbit.
-          let dx = (x - px) as f32;
-          let dy = (y - py) as f32;
-          c.yaw -= dx * 0.01;
-          c.pitch = (c.pitch - dy * 0.01).clamp(-1.5, 1.5); // avoid flipping at the poles
-        }
-        2 => {
-          // Two fingers => pinch: compare the current finger spread to the last
-          // one and feed the change into the orbit radius (spread apart = zoom in).
-          let ax = c.pointers[0].x;
-          let ay = c.pointers[0].y;
-          let bx = c.pointers[1].x;
-          let by = c.pointers[1].y;
-          let dist = ((ax - bx).powi(2) + (ay - by).powi(2)).sqrt();
-          if let Some(prev) = c.pinch_dist {
-            let delta = (prev - dist) as f32;
-            c.radius = (c.radius + delta * 0.01).clamp(0.75, 50.0);
-          }
-          c.pinch_dist = Some(dist);
-        }
-        _ => {}
-      }
-    });
-  });
-
-  // A pointer was released or cancelled (finger lifted, gesture aborted): stop
-  // tracking it. `drop_pointer` is a plain fn, so it can be reused for both events.
-  add_listener::<PointerEvent, _>(target, "pointerup", drop_pointer);
-  add_listener::<PointerEvent, _>(target, "pointercancel", drop_pointer);
-
-  // Desktop mouse wheel still zooms directly.
-  add_listener::<WheelEvent, _>(target, "wheel", |e| {
-    e.prevent_default(); // stop the page scrolling
-    CAM_STATE.with(|c| {
-      let mut c = c.borrow_mut();
-      c.radius = (c.radius + e.delta_y() as f32 * 0.0006).clamp(0.75, 50.0);
-    });
-  });
-}
-
-// Remove a finished pointer from the tracked set and clear the pinch baseline so the
-// next two-finger gesture starts fresh. Used for both `pointerup` and `pointercancel`.
-fn drop_pointer(e: PointerEvent) {
-  CAM_STATE.with(|c| {
-    let mut c = c.borrow_mut();
-    c.pointers.retain(|p| p.id != e.pointer_id());
-    c.pinch_dist = None;
-  });
+  set_element_html("message", message).expect("failed to update message");
 }
