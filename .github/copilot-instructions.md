@@ -35,5 +35,6 @@ If a consumer cannot express something through `luxa`'s public API, improve that
 
 - Run the narrowest relevant `cargo check -p <crate>` while iterating.
 - NEVER run `cargo test` there are no tests in this workspace yet.
+- NEVER check wasm
 - For WebAssembly-specific changes, also check the affected crate with `--target wasm32-unknown-unknown`.
 - Before finishing Rust changes, run `cargo fmt --all -- --check` and the relevant tests or workspace check.
