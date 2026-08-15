@@ -165,6 +165,69 @@ pub(crate) fn primitive_cube() -> (Vec<Vertex>, Vec<u16>) {
   (vertices, indices)
 }
 
+// Returns a unit plane centred on the origin in the XZ plane, facing +Y.
+pub(crate) fn primitive_plane() -> (Vec<Vertex>, Vec<u16>) {
+  let vertices = vec![
+    Vertex {
+      position: [-0.5, 0.0, -0.5],
+      tex_coord: [0.0, 0.0],
+      normal: [0.0, 1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
+    },
+    Vertex {
+      position: [-0.5, 0.0, 0.5],
+      tex_coord: [0.0, 1.0],
+      normal: [0.0, 1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
+    },
+    Vertex {
+      position: [0.5, 0.0, 0.5],
+      tex_coord: [1.0, 1.0],
+      normal: [0.0, 1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
+    },
+    Vertex {
+      position: [0.5, 0.0, -0.5],
+      tex_coord: [1.0, 0.0],
+      normal: [0.0, 1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
+    },
+  ];
+
+  (vertices, vec![0, 1, 2, 0, 2, 3])
+}
+
+// Returns a unit-diameter disc centred on the origin in the XZ plane, facing +Y.
+pub(crate) fn primitive_disc(segments: u32) -> (Vec<Vertex>, Vec<u16>) {
+  let segments = segments.clamp(3, u16::MAX as u32 - 1);
+  let mut vertices = Vec::with_capacity(segments as usize + 2);
+  let mut indices = Vec::with_capacity(segments as usize * 3);
+
+  vertices.push(Vertex {
+    position: [0.0, 0.0, 0.0],
+    tex_coord: [0.5, 0.5],
+    normal: [0.0, 1.0, 0.0],
+    tangent: [1.0, 0.0, 0.0, -1.0],
+  });
+
+  for segment in 0..=segments {
+    let angle = std::f32::consts::TAU * segment as f32 / segments as f32;
+    let (sin, cos) = angle.sin_cos();
+    vertices.push(Vertex {
+      position: [cos * 0.5, 0.0, sin * 0.5],
+      tex_coord: [cos * 0.5 + 0.5, sin * 0.5 + 0.5],
+      normal: [0.0, 1.0, 0.0],
+      tangent: [1.0, 0.0, 0.0, -1.0],
+    });
+  }
+
+  for segment in 1..=segments {
+    indices.extend_from_slice(&[0, (segment + 1) as u16, segment as u16]);
+  }
+
+  (vertices, indices)
+}
+
 // Returns a UV sphere of radius 0.5 centred on the origin.
 // - `slices`: number of vertical segments (longitude, going around the equator). Clamped to a minimum of 3.
 // - `stacks`: number of horizontal bands (latitude, pole to pole). Clamped to a minimum of 2.
@@ -269,6 +332,25 @@ impl MeshBuilder {
     self
   }
 
+  // Add a unit plane centred on the origin in the XZ plane, facing +Y.
+  pub fn plane(mut self) -> Self {
+    let base = self.verts.len() as u16;
+    let (verts, indices) = primitive_plane();
+    self.verts.extend(verts);
+    self.indices.extend(indices.into_iter().map(|idx| idx + base));
+    self
+  }
+
+  // Add a unit-diameter disc centred on the origin in the XZ plane, facing +Y.
+  // Segment counts below 3 are clamped to 3.
+  pub fn disc(mut self, segments: u32) -> Self {
+    let base = self.verts.len() as u16;
+    let (verts, indices) = primitive_disc(segments);
+    self.verts.extend(verts);
+    self.indices.extend(indices.into_iter().map(|idx| idx + base));
+    self
+  }
+
   // Add a UV sphere of radius 0.5. `slices` controls the vertical segments (longitude)
   // and `stacks` the horizontal bands (latitude); more of each means a smoother sphere.
   // Bad counts are clamped by the primitive generator rather than erroring.
@@ -278,6 +360,15 @@ impl MeshBuilder {
     self.verts.extend(verts);
     // Offset indices by the vertices already present so this primitive can be combined with others.
     self.indices.extend(indices.into_iter().map(|idx| idx + base));
+    self
+  }
+
+  // Scale the texture coordinates of all geometry currently in the builder.
+  pub fn scale_uvs(mut self, scale: [f32; 2]) -> Self {
+    for vertex in &mut self.verts {
+      vertex.tex_coord[0] *= scale[0];
+      vertex.tex_coord[1] *= scale[1];
+    }
     self
   }
 

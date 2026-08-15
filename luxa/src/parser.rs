@@ -12,7 +12,7 @@ use image::{DynamicImage, ImageBuffer, Luma, LumaA, Rgb, Rgba};
 use crate::{
   SceneHandle,
   engine::{Engine, NodeHandle, TextureHandle},
-  models::{Mesh, ModelDescriptor, Vertex},
+  models::{ImportedMaterial, Mesh, ModelDescriptor, Vertex},
   nodes::MeshNodeDescriptor,
 };
 
@@ -154,6 +154,67 @@ impl Engine {
         meshes: mesh_handles,
       },
     )?)
+  }
+
+  pub fn import_gltf_materials_bytes(&mut self, bytes: &[u8]) -> Result<Vec<ImportedMaterial>> {
+    let (document, buffers, images) = gltf::import_slice(bytes).context("failed to import glTF bytes")?;
+    let parsed = parse_document(&document, &buffers, images)?;
+
+    let mut imported_materials = Vec::with_capacity(parsed.materials.len());
+    for (index, parsed_mat) in parsed.materials.into_iter().enumerate() {
+      let handle = self.create_material(crate::models::MaterialDescriptor::default())?;
+
+      if let Some(base_color_texture) = parsed_mat.base_color_texture {
+        let texture_handle = load_material_texture(self, &parsed.images, &mut HashMap::new(), base_color_texture, wgpu::TextureFormat::Rgba8UnormSrgb)?;
+        self.material_mut(handle)?.set_base_color_texture(texture_handle);
+      }
+
+      if let Some(metallic_roughness_texture) = parsed_mat.metallic_roughness_texture {
+        let texture_handle = load_material_texture(self, &parsed.images, &mut HashMap::new(), metallic_roughness_texture, wgpu::TextureFormat::Rgba8Unorm)?;
+        self.material_mut(handle)?.set_metallic_roughness_texture(texture_handle);
+      }
+
+      if let Some(emissive_texture) = parsed_mat.emissive_texture {
+        let texture_handle = load_material_texture(self, &parsed.images, &mut HashMap::new(), emissive_texture, wgpu::TextureFormat::Rgba8UnormSrgb)?;
+        self.material_mut(handle)?.set_emissive_texture(texture_handle);
+      }
+
+      if let Some(normal_texture) = parsed_mat.normal_texture {
+        let texture_handle = load_material_texture(self, &parsed.images, &mut HashMap::new(), normal_texture, wgpu::TextureFormat::Rgba8Unorm)?;
+        self.material_mut(handle)?.set_normal_texture(texture_handle);
+      }
+
+      if let Some(occlusion_texture) = parsed_mat.occlusion_texture {
+        let texture_handle = load_material_texture(self, &parsed.images, &mut HashMap::new(), occlusion_texture, wgpu::TextureFormat::Rgba8Unorm)?;
+        self.material_mut(handle)?.set_occlusion_texture(texture_handle);
+      }
+
+      self.material_mut(handle)?.set_base_color_factor(parsed_mat.base_color_factor);
+      self.material_mut(handle)?.set_metallic_factor(parsed_mat.metallic_factor);
+      self.material_mut(handle)?.set_roughness_factor(parsed_mat.roughness_factor);
+      self.material_mut(handle)?.set_normal_scale(parsed_mat.normal_scale);
+      self.material_mut(handle)?.set_occlusion_strength(parsed_mat.occlusion_strength);
+      self.material_mut(handle)?.set_emissive_factor(parsed_mat.emissive_factor);
+
+      self.material_mut(handle)?.set_alpha_mode(match parsed_mat.alpha_mode {
+        gltf::material::AlphaMode::Opaque => crate::models::AlphaMode::Opaque,
+        gltf::material::AlphaMode::Mask => crate::models::AlphaMode::Mask,
+        gltf::material::AlphaMode::Blend => crate::models::AlphaMode::Blend,
+      });
+
+      if let Some(cutoff) = parsed_mat.alpha_cutoff {
+        self.material_mut(handle)?.set_alpha_cutoff(cutoff);
+      }
+
+      self.material_mut(handle)?.set_double_sided(parsed_mat.double_sided);
+
+      imported_materials.push(ImportedMaterial {
+        name: None, // glTF material names are optional; you can extend this to store them if needed
+        index,
+        handle,
+      });
+    }
+    Ok(imported_materials)
   }
 }
 

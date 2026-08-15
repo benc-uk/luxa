@@ -1,6 +1,6 @@
 use crate::engine::TextureHandle;
-use crate::helpers;
 use crate::models::Texture;
+use crate::{MaterialHandle, helpers};
 use slotmap::SlotMap;
 use wgpu::BindGroupLayout;
 use wgpu::util::DeviceExt;
@@ -365,4 +365,12 @@ fn build_bind_group(
       helpers::bind_sampler(10, emissive),
     ],
   })
+}
+
+// Importing materials
+
+pub struct ImportedMaterial {
+  pub name: Option<String>,
+  pub index: usize,
+  pub handle: MaterialHandle,
 }

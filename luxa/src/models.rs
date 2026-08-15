@@ -7,7 +7,7 @@ mod texture;
 pub use builder::MeshBuilder;
 pub(crate) use cubemap::Cubemap;
 pub(crate) use material::MaterialFallbacks;
-pub use material::{AlphaMode, Material, MaterialDescriptor};
+pub use material::{AlphaMode, ImportedMaterial, Material, MaterialDescriptor};
 pub use mesh_vert::{Mesh, Vertex};
 pub(crate) use texture::Texture;
 
