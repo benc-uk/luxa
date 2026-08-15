@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+
+    <title>Luxa: WASM Demo</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #112;
+        font-family: Bahnschrift, 'DIN Alternate', 'Trebuchet MS', sans-serif;
+      }
+
+      canvas {
+        display: block;
+        background: #000;
+        touch-action: none;
+        width: min(100vw, 100vh);
+        height: min(100vw, 100vh);
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+      }
+
+      #message {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 1.5rem;
+        color: #fff;
+        font-family: sans-serif;
+        text-shadow:
+          -2px -2px 0 #000,
+          2px -2px 0 #000,
+          -2px 2px 0 #000,
+          2px 2px 0 #000,
+          0 3px 10px #000,
+          0 0 24px #000;
+        z-index: 1000;
+      }
+
+      option {
+        font-size: 1rem;
+      }
+
+      #settings {
+        position: absolute;
+        top: 1rem;
+        left: 1rem;
+        z-index: 10;
+        box-sizing: border-box;
+        width: min(17rem, calc(100vw - 2rem));
+        padding: 1rem;
+        color: #f4f5f2;
+        background: rgba(225, 235, 232, 0.22);
+        border: 1px solid rgba(255, 255, 255, 0.48);
+        border-radius: 8px;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.35),
+          0 12px 32px rgba(0, 0, 0, 0.16);
+        backdrop-filter: blur(20px) saturate(140%);
+      }
+
+      #settings:not([open]) {
+        width: auto;
+      }
+
+      #settings summary {
+        cursor: pointer;
+        font-size: 0.78rem;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: 0;
+        text-transform: uppercase;
+        color: #8ed4c1;
+      }
+
+      #settings summary::marker {
+        color: #b8bfbd;
+      }
+
+      #settings[open] summary {
+        margin-bottom: 1rem;
+      }
+
+      .setting {
+        display: grid;
+        gap: 0.35rem;
+      }
+
+      .setting + .setting {
+        margin-top: 0.85rem;
+      }
+
+      .setting label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #b8bfbd;
+      }
+
+      #settings select {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 2.5rem;
+        padding: 0.5rem 2rem 0.5rem 0.65rem;
+        font: inherit;
+        font-size: 0.9rem;
+        color: #f4f5f2;
+        background: #272c2d;
+        border: 1px solid #454d4d;
+        border-radius: 6px;
+        outline: none;
+      }
+
+      #settings select:hover {
+        border-color: #6b7775;
+      }
+
+      #settings select:focus-visible {
+        border-color: #8ed4c1;
+        box-shadow: 0 0 0 3px rgba(142, 212, 193, 0.2);
+      }
+    </style>
+
+    <script type="module">
+      import init, { change_environment } from './pkg/demo_scene.js';
+
+      await init();
+      window.change_environment = change_environment;
+    </script>
+  </head>
+
+  <body>
+    <canvas id="canvas" width="1440" height="1440"></canvas>
+
+    <div id="message">⏳ Loading...</div>
+
+    <details id="settings" open>
+      <summary>Scene controls</summary>
+
+      <div class="setting">
+        <label for="bg-select">Environment & Ambient</label>
+        <select id="bg-select">
+          <option value="assets/ibl/veranda_2k.hdr">Veranda</option>
+          <option value="assets/ibl/colorful_studio_4k.hdr">Colourful Studio</option>
+          <option value="assets/ibl/venice_sunset_4k.hdr">Venice Sunset</option>
+          <option value="assets/ibl/ferndale_studio_04_4k.hdr">Ferndale Studio</option>
+          <option value="assets/ibl/photo_studio_loft_hall_2k.hdr" selected>Photo Studio</option>
+          <option value="assets/ibl/simple.hdr">Simple</option>
+          <option value="disabled">None (Flat Ambient)</option>
+        </select>
+      </div>
+    </details>
+
+    <script>
+      const bgSelect = document.getElementById('bg-select');
+
+      bgSelect.addEventListener('change', () => {
+        window.change_environment(bgSelect.value);
+      });
+    </script>
+  </body>
+</html>

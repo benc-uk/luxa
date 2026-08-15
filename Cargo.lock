@@ -297,6 +297,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "demo-scene"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "console_log",
+ "gloo-net",
+ "log",
+ "luxa",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "dispatch2"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

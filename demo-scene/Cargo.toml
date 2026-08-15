@@ -1,0 +1,32 @@
+[package]
+name = "demo-scene"
+version = "0.1.0"
+edition = "2024"
+description = "Luxa demo scene"
+repository = "https://github.com/benc-uk/luxa"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+log = "0.4"
+wasm-bindgen = "0.2"
+console_log = "1.0"
+console_error_panic_hook = "0.1"
+gloo-net = "0.6"
+luxa = { path = "../luxa" }
+wasm-bindgen-futures = "0.4.76"
+
+[dependencies.web-sys]
+features = [
+  "Window",
+  "Document",
+  "Element",
+  "HtmlElement",
+  "HtmlCanvasElement",
+  "Location",
+  "PointerEvent",
+  "WheelEvent",
+]
+version = "0.3"
